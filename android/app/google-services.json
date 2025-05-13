@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "881045701473",
+    "project_id": "carbono-tracker-app",
+    "storage_bucket": "carbono-tracker-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:881045701473:android:ac5557e0fb66d1476f7b20",
+        "android_client_info": {
+          "package_name": "com.example.b2y_carbon"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJSOP9nzPOUj1Ph-wGCtvSB9C-acF3mAM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:881045701473:android:7ba1d7874ff779a76f7b20",
+        "android_client_info": {
+          "package_name": "com.example.carbon"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJSOP9nzPOUj1Ph-wGCtvSB9C-acF3mAM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

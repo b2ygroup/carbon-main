@@ -44,6 +44,10 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<key>NSCameraUsageDescription</key>
+	<string>Este aplicativo precisa de acesso à câmera para tirar fotos da placa e do hodômetro.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Este aplicativo precisa de acesso à galeria para selecionar fotos da placa e do hodômetro (opcional).</string>	
 	<true/>
 </dict>
 </plist>

@@ -214,10 +214,10 @@ class MinimapPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final landColor = const Color(0xFFECEFF1); // Cinza muito claro para terra (quase branco)
-    final roadColor = const Color(0xFFFFFFFF); // Estradas brancas
-    final buildingColor = const Color(0xFFCFD8DC); // Edifícios cinza claro azulado
-    final parkColor = const Color(0xFFC8E6C9); // Verde pastel bem claro para parques
+    const landColor = Color(0xFFECEFF1); // Cinza muito claro para terra (quase branco)
+    const roadColor = Color(0xFFFFFFFF); // Estradas brancas
+    const buildingColor = Color(0xFFCFD8DC); // Edifícios cinza claro azulado
+    const parkColor = Color(0xFFC8E6C9); // Verde pastel bem claro para parques
 
     final eletropostoMarkerColor = Colors.teal[600]!; // Teal para melhor destaque
     final userMarkerColor = Colors.redAccent[400]!;
@@ -273,7 +273,7 @@ class MinimapPlaceholder extends StatelessWidget {
                   ),
                 ),
               );
-            }).toList(),
+            }),
             if (showUserMarker)
               Align(
                 alignment: Alignment.center,

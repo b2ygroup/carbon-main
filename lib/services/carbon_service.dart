@@ -1,146 +1,171 @@
-// lib/services/carbon_service.dart (ARQUIVO COMPLETO COM getTripCalculationResults ADICIONADO)
-import 'dart:math'; // Para usar max()
-import 'package:carbon/models/vehicle_type_enum.dart'; // CONFIRME NOME PACOTE
+// lib/services/carbon_service.dart (ATUALIZADO COM BARCOS E AVIÕES)
+import 'package:carbon/models/vehicle_type_enum.dart';
+
+class TripCalculationResult {
+  final double co2ImpactKg;
+  final double co2EmittedKg;
+  final double co2SavedKg;
+  final double creditsEarned;
+  final double compensationCostBRL;
+  final bool isEmission;
+
+  TripCalculationResult({
+    this.co2ImpactKg = 0.0,
+    this.co2EmittedKg = 0.0,
+    this.co2SavedKg = 0.0,
+    this.creditsEarned = 0.0,
+    this.compensationCostBRL = 0.0,
+    this.isEmission = false,
+  });
+}
 
 class CarbonService {
+  // Fatores de Emissão (kg CO2e por unidade)
+  static const double _kgCO2ePerLiterGasoline = 2.3;
+  static const double _kgCO2ePerLiterEthanol = 1.5;
+  static const double _kgCO2ePerLiterDiesel = 2.7;
+  static const double _kgCO2ePerCubicMeterGnv = 1.9;
 
-  // --- Fatores de Emissão (kg CO2e / litro) - BASEADO NO SEU CÓDIGO ---
-  static const double _kgCO2e_per_Liter_GasolineUser = 0.75 * 0.82 * 3.7; // ~2.2755
-  static const double _kgCO2e_per_Liter_EthanolUser = 0.75 * 0.82 * 1.5;   // ~0.9225
-  static const double _kgCO2e_per_Liter_DieselUser = 0.85 * 0.84 * 3.2;   // ~2.2848
+  // Consumo Médio (km por unidade)
+  static const double _kmplGasSmall = 14.0;
+  static const double _kmplGasMedium = 11.5;
+  static const double _kmplGasLarge = 8.5;
+  static const double _kmplEthSmall = 9.8;
+  static const double _kmplEthMedium = 8.0;
+  static const double _kmplEthLarge = 6.0;
+  static const double _kmplSuvGas = 9.5;
+  static const double _kmplSuvDiesel = 11.0;
+  static const double _kmplSuvFlex = 8.5;
+  static const double _kmplPickupDiesel = 9.0;
+  static const double _kmplMotoLowCc = 40.0;
+  static const double _kmplMotoHighCc = 22.0;
+  static const double _kmplBusUrban = 2.8;
+  static const double _kmplBusRoad = 3.5;
+  static const double _kmplLightTruck = 6.0;
+  static const double _kmplHeavyTruck = 2.5;
+  static const double _kmpm3Gnv = 13.0;
 
-  // --- Consumo Médio (km / litro) - PLACEHOLDERS (Considerar tornar dinâmico por veículo no futuro) ---
-  static const double _km_per_Liter_GasolineC = 12.0;
-  static const double _km_per_Liter_Ethanol = 8.0;
-  static const double _km_per_Liter_DieselS10 = 15.0;
-  // Média para Flex (pode ser impreciso, ideal seria saber a proporção usada)
-  static const double _km_per_Liter_Flex_Avg = (_km_per_Liter_GasolineC + _km_per_Liter_Ethanol) / 2; // ~10.0
+  // Fatores Elétricos
+  static const double _gridEmissionFactorBr = 0.075; // kg/kWh
+  static const double _kwhpkmCarCompact = 0.13;
+  static const double _kwhpkmCarSedanSuv = 0.18;
+  static const double _kwhpkmMoto = 0.04;
+  static const double _kwhpkmBus = 1.2;
 
-  // --- Fatores Elétrico/Híbrido ---
-  static const double _gridEmissionFactorKgPerKWh = 0.07; // Exemplo Brasil (Baixo Fator)
-  static const double _evConsumptionKWhPerKm = 0.15;    // Exemplo EV Médio
+  // NOVOS FATORES DE EMISSÃO (kg CO2 / km)
+  static const double _kgCO2ePerKmAirplaneSingleProp = 0.39;
+  static const double _kgCO2ePerKmAirplaneRegionalJet = 1.80;
+  static const double _kgCO2ePerKmAirplaneJumboJet = 11.0;
+  static const double _kgCO2ePerKmBoatRecreational = 1.7;
+  static const double _kgCO2ePerKmBoatYachtDiesel = 20.0;
 
-  // --- Preço Carbono (R$ / ton CO2e) - PLACEHOLDER ---
-  static const double _carbonPricePerTon = 55.50; // Exemplo
+  // Parâmetros Financeiros
+  static const double _brlPerKgCo2ForCompensation = 0.25;
+  static const double _creditsPerKgCo2Saved = 0.1;
 
-  // --- Linha Base Média para EV (kg CO2e / km) - RECALCULADO ---
-  // Representa a emissão média *evitada* por km ao usar EV em vez de um carro médio a combustão.
-  static final double _avgBaselineKgCO2ePerKm = _calculateAverageBaseline();
-
-  static double _calculateAverageBaseline() {
-    // Emissão por KM para cada tipo
-    const double gasKm = (_kgCO2e_per_Liter_GasolineUser / _km_per_Liter_GasolineC);   // ~0.1896
-    const double ethKm = (_kgCO2e_per_Liter_EthanolUser / _km_per_Liter_Ethanol);   // ~0.1153
-    const double dslKm = (_kgCO2e_per_Liter_DieselUser / _km_per_Liter_DieselS10);  // ~0.1523
-    // Média simples dos tipos a combustão
-    return (gasKm + ethKm + dslKm) / 3.0; // ~0.1524 kg CO2e / km
-  }
-
-  /// **Método Central:** Calcula o impacto LÍQUIDO de carbono (kg CO2e),
-  /// onde negativo significa emissões evitadas e positivo significa emissões geradas.
-  /// Também calcula o valor monetário associado e os créditos ganhos (se aplicável).
-  Map<String, double> _calculateTripImpactInternal({
-    required double distanceKm,
-    required VehicleType vehicleType,
-  }) {
-    double carbonKg = 0; // Impacto líquido
-
-    switch (vehicleType) {
-      case VehicleType.gasoline:
-        // Emissão = (Distância / Consumo) * Fator_Emissão_Litro
-        carbonKg = (distanceKm / _km_per_Liter_GasolineC) * _kgCO2e_per_Liter_GasolineUser;
-        break;
-      case VehicleType.alcohol:
-        carbonKg = (distanceKm / _km_per_Liter_Ethanol) * _kgCO2e_per_Liter_EthanolUser;
-        break;
-      case VehicleType.diesel:
-        carbonKg = (distanceKm / _km_per_Liter_DieselS10) * _kgCO2e_per_Liter_DieselUser;
-        break;
-      case VehicleType.flex:
-        // Usa média de consumo e média de fator de emissão (simplificação)
-        double litersFlex = distanceKm / _km_per_Liter_Flex_Avg;
-        double avgEmissionFactor = (_kgCO2e_per_Liter_GasolineUser + _kgCO2e_per_Liter_EthanolUser) / 2;
-        carbonKg = litersFlex * avgEmissionFactor;
-        break;
-      case VehicleType.electric:
-      case VehicleType.hybrid: // Trata híbrido como elétrico para cálculo de emissão evitada vs linha base
-        // Emissões da Geração da Eletricidade Consumida
-        double gridEmissionsKg = distanceKm * _evConsumptionKWhPerKm * _gridEmissionFactorKgPerKWh;
-        // Emissões da Linha de Base (Média dos carros a combustão)
-        double baselineEmissionsKg = distanceKm * _avgBaselineKgCO2ePerKm;
-        // Impacto Líquido = Emissão_Real - Emissão_Linha_Base
-        // Se for negativo, significa que as emissões reais (grid) foram MENORES que a linha de base.
-        carbonKg = gridEmissionsKg - baselineEmissionsKg;
-        break;
-      // Adicione outros tipos de veículo se necessário (GNV, etc.)
-      // default:
-      //   carbonKg = 0; // Ou lançar um erro se o tipo for desconhecido
+  double _calculateCombustionEmissionKg(double distanceKm, VehicleType type) {
+    switch (type) {
+      // Carros
+      case VehicleType.carGasolineSmall: return (distanceKm / _kmplGasSmall) * _kgCO2ePerLiterGasoline;
+      case VehicleType.carGasolineMedium: return (distanceKm / _kmplGasMedium) * _kgCO2ePerLiterGasoline;
+      case VehicleType.carGasolineLarge: return (distanceKm / _kmplGasLarge) * _kgCO2ePerLiterGasoline;
+      case VehicleType.carFlexSmall: return (distanceKm / _kmplEthSmall) * _kgCO2ePerLiterEthanol;
+      case VehicleType.carFlexMedium: return (distanceKm / _kmplEthMedium) * _kgCO2ePerLiterEthanol;
+      case VehicleType.carFlexLarge: return (distanceKm / _kmplEthLarge) * _kgCO2ePerLiterEthanol;
+      // SUVs e Pick-ups
+      case VehicleType.suvGasoline: return (distanceKm / _kmplSuvGas) * _kgCO2ePerLiterGasoline;
+      case VehicleType.suvDiesel: return (distanceKm / _kmplSuvDiesel) * _kgCO2ePerLiterDiesel;
+      case VehicleType.suvFlex: return (distanceKm / _kmplSuvFlex) * _kgCO2ePerLiterEthanol;
+      case VehicleType.pickupDiesel: return (distanceKm / _kmplPickupDiesel) * _kgCO2ePerLiterDiesel;
+      // Motos
+      case VehicleType.motoGasolineLowCc: return (distanceKm / _kmplMotoLowCc) * _kgCO2ePerLiterGasoline;
+      case VehicleType.motoGasolineHighCc: return (distanceKm / _kmplMotoHighCc) * _kgCO2ePerLiterGasoline;
+      // Pesados
+      case VehicleType.busDieselUrban: return (distanceKm / _kmplBusUrban) * _kgCO2ePerLiterDiesel;
+      case VehicleType.busDieselRoad: return (distanceKm / _kmplBusRoad) * _kgCO2ePerLiterDiesel;
+      case VehicleType.lightTruckDiesel: return (distanceKm / _kmplLightTruck) * _kgCO2ePerLiterDiesel;
+      case VehicleType.heavyTruckDiesel: return (distanceKm / _kmplHeavyTruck) * _kgCO2ePerLiterDiesel;
+      // Outros
+      case VehicleType.gnv: return (distanceKm / _kmpm3Gnv) * _kgCO2ePerCubicMeterGnv;
+      // Legados
+      case VehicleType.gasoline: return (distanceKm / _kmplGasMedium) * _kgCO2ePerLiterGasoline;
+      case VehicleType.alcohol: return (distanceKm / _kmplEthMedium) * _kgCO2ePerLiterEthanol;
+      case VehicleType.diesel: return (distanceKm / 10.0) * _kgCO2ePerLiterDiesel;
+      case VehicleType.flex: return (distanceKm / 10.0) * _kgCO2ePerLiterEthanol;
+      
+      // NOVOS CÁLCULOS
+      case VehicleType.airplaneSingleProp: return distanceKm * _kgCO2ePerKmAirplaneSingleProp;
+      case VehicleType.airplaneRegionalJet: return distanceKm * _kgCO2ePerKmAirplaneRegionalJet;
+      case VehicleType.airplaneJumboJet: return distanceKm * _kgCO2ePerKmAirplaneJumboJet;
+      case VehicleType.boatRecreational: return distanceKm * _kgCO2ePerKmBoatRecreational;
+      case VehicleType.boatYachtDiesel: return distanceKm * _kgCO2ePerKmBoatYachtDiesel;
+      
+      default: return 0.0;
     }
+  }
+  
+  double _calculateElectricEmissionKg(double distanceKm, VehicleType type) {
+     switch (type) {
+        case VehicleType.carElectricCompact:
+        case VehicleType.electric:
+          return distanceKm * _kwhpkmCarCompact * _gridEmissionFactorBr;
+        
+        case VehicleType.carElectricSedanSuv:
+        case VehicleType.suvElectric:
+          return distanceKm * _kwhpkmCarSedanSuv * _gridEmissionFactorBr;
+        
+        case VehicleType.motoElectric:
+          return distanceKm * _kwhpkmMoto * _gridEmissionFactorBr;
 
-    // --- Cálculos Derivados ---
+        case VehicleType.busElectric:
+          return distanceKm * _kwhpkmBus * _gridEmissionFactorBr;
 
-    // CO2 Salvo: É o valor positivo do carbono evitado (quando carbonKg é negativo).
-    // Usamos max(0, -carbonKg) para garantir que seja 0 se carbonKg for positivo.
-    double co2SavedKg = max(0.0, -carbonKg);
+        case VehicleType.carHybrid:
+        case VehicleType.suvHybrid:
+          return _calculateCombustionEmissionKg(distanceKm, VehicleType.carGasolineSmall) * 0.5;
 
-    // Créditos: Concedidos com base no CO2 salvo (evitado).
-    // Usamos a fórmula: CO2_Salvo * 0.1 (ajuste a taxa 0.1 conforme sua regra)
-    double creditsEarned = co2SavedKg * 0.1;
-
-    // Valor Monetário: Baseado no impacto líquido e preço por tonelada.
-    // Se carbonKg é negativo (evitado), valor é positivo (crédito).
-    // Se carbonKg é positivo (emitido), valor é negativo (custo teórico).
-    double carbonTonnes = carbonKg / 1000.0;
-    double carbonValue = -carbonTonnes * _carbonPricePerTon; // O sinal negativo inverte
-
-    print('[CarbonService] Calculado: ${distanceKm.toStringAsFixed(1)} km, Tipo: ${vehicleType.name}, '
-          'Impacto Líquido: ${carbonKg.toStringAsFixed(3)} kg CO2e, '
-          'CO2 Salvo: ${co2SavedKg.toStringAsFixed(3)} kg, '
-          'Créditos: ${creditsEarned.toStringAsFixed(4)}, '
-          'Valor: R\$ ${carbonValue.toStringAsFixed(2)}');
-
-    return {
-      'carbonKg': carbonKg,          // Impacto líquido (+ emitido, - evitado)
-      'co2SavedKg': co2SavedKg,      // CO2 efetivamente salvo (sempre >= 0)
-      'creditsEarned': creditsEarned,  // Créditos ganhos (sempre >= 0)
-      'carbonValue': carbonValue,      // Valor monetário (+ crédito, - custo)
-    };
+        default: return 0.0;
+     }
   }
 
-  // --- Métodos Públicos para Interface com o App ---
-
-  /// Calcula o CO2 SALVO (kg) para uma viagem.
-  /// Retorna 0 se o veículo emitiu mais que a linha de base (ou for a combustão).
-  /// Retorna o valor positivo das emissões evitadas para EV/Híbrido.
-  Future<double> calculateCO2Saved(VehicleType vehicleType, double distanceKm) async {
-    // Simula uma operação assíncrona se necessário no futuro, por enquanto é síncrono.
-    await Future.delayed(Duration.zero); // Permite usar async/await
-    final results = _calculateTripImpactInternal(distanceKm: distanceKm, vehicleType: vehicleType);
-    return results['co2SavedKg'] ?? 0.0;
-  }
-
-  /// Calcula os CRÉDITOS ganhos para uma viagem.
-  /// Créditos são baseados no CO2 salvo (emissões evitadas).
-  Future<double> calculateCreditsEarned(VehicleType vehicleType, double distanceKm) async {
-    // Simula uma operação assíncrona
-    await Future.delayed(Duration.zero);
-    final results = _calculateTripImpactInternal(distanceKm: distanceKm, vehicleType: vehicleType);
-    return results['creditsEarned'] ?? 0.0;
-  }
-
-  // ****** MÉTODO ADICIONADO ******
-  /// Calcula e retorna todos os resultados relevantes de impacto de uma viagem.
-  /// Ideal para ser usado por widgets como o TripCalculatorWidget.
-  /// Retorna um Map com: 'carbonKg', 'co2SavedKg', 'creditsEarned', 'carbonValue'.
-  Future<Map<String, double>> getTripCalculationResults({
+  Future<TripCalculationResult> getTripCalculationResults({
     required VehicleType vehicleType,
     required double distanceKm,
   }) async {
-    // Simula uma operação assíncrona se necessário
-    await Future.delayed(Duration.zero);
-    // Chama o método interno que já faz todo o trabalho
-    return _calculateTripImpactInternal(distanceKm: distanceKm, vehicleType: vehicleType);
-  }
-  // *******************************
+    
+    if (vehicleType.isCombustion) {
+      final double emission = _calculateCombustionEmissionKg(distanceKm, vehicleType);
+      final double cost = emission * _brlPerKgCo2ForCompensation;
+      return TripCalculationResult(
+        isEmission: true,
+        co2EmittedKg: emission,
+        compensationCostBRL: cost,
+        co2ImpactKg: emission,
+      );
+    } 
+    else {
+      double baselineEmissionKg;
+      switch(vehicleType) {
+        case VehicleType.motoElectric:
+          baselineEmissionKg = _calculateCombustionEmissionKg(distanceKm, VehicleType.motoGasolineLowCc);
+          break;
+        case VehicleType.busElectric:
+          baselineEmissionKg = _calculateCombustionEmissionKg(distanceKm, VehicleType.busDieselUrban);
+          break;
+        default: // Carros, SUVs elétricos e híbridos
+          baselineEmissionKg = _calculateCombustionEmissionKg(distanceKm, VehicleType.carFlexMedium);
+      }
+      
+      final double actualEmissionKg = _calculateElectricEmissionKg(distanceKm, vehicleType);
+      final double saved = baselineEmissionKg - actualEmissionKg;
+      final double credits = saved * _creditsPerKgCo2Saved;
 
-} // Fim da classe CarbonService
+      return TripCalculationResult(
+        isEmission: false,
+        co2SavedKg: saved > 0 ? saved : 0,
+        creditsEarned: credits > 0 ? credits : 0,
+        co2ImpactKg: -saved,
+      );
+    }
+  }
+}

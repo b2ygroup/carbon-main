@@ -1,1 +1,56 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"carbono-tracker-app","appId":"1:881045701473:android:7ba1d7874ff779a76f7b20","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"carbono-tracker-app","configurations":{"android":"1:881045701473:android:7ba1d7874ff779a76f7b20","ios":"1:881045701473:ios:90233da05d354f546f7b20","macos":"1:881045701473:ios:90233da05d354f546f7b20","web":"1:881045701473:web:02082402fca3e5766f7b20","windows":"1:881045701473:web:072e1904d6ae94cb6f7b20"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "carbono-tracker-app",
+          "appId": "1:881045701473:android:7ba1d7874ff779a76f7b20",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "carbono-tracker-app",
+          "configurations": {
+            "android": "1:881045701473:android:7ba1d7874ff779a76f7b20",
+            "ios": "1:881045701473:ios:90233da05d354f546f7b20",
+            "macos": "1:881045701473:ios:90233da05d354f546f7b20",
+            "web": "1:881045701473:web:02082402fca3e5766f7b20",
+            "windows": "1:881045701473:web:072e1904d6ae94cb6f7b20"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "site": "carbono-tracker-app",
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+
+      ]
+    }
+  ]
+}

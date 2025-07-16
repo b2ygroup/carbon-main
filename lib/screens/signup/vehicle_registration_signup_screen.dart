@@ -1,130 +1,362 @@
-// lib/screens/signup/vehicle_registration_signup_screen.dart (VERSÃO VALIDADA #129)
-import 'dart:async';
+// lib/screens/signup/vehicle_registration_signup_screen.dart (COMPLETO E CORRIGIDO)
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:carbon/main.dart'; // Para o AuthWrapper
 
-// Importa o enum e o AuthWrapper (Use o nome correto do seu pacote)
-import 'package:carbon/models/vehicle_type_enum.dart';
-import 'package:carbon/main.dart'; // Para AuthWrapper
+enum RegistrationStep { categorySelection, detailsForm }
 
 class VehicleRegistrationScreenForSignup extends StatefulWidget {
-  const VehicleRegistrationScreenForSignup({super.key});
-  @override State<VehicleRegistrationScreenForSignup> createState() => _VehicleRegistrationScreenForSignupState();
+  // <<< ALTERAÇÃO 1: Adicionado o parâmetro user, que é obrigatório >>>
+  final User user;
+  
+  const VehicleRegistrationScreenForSignup({super.key, required this.user});
+
+  @override
+  State<VehicleRegistrationScreenForSignup> createState() => _VehicleRegistrationScreenForSignupState();
 }
 
 class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistrationScreenForSignup> {
-  final _formKey = GlobalKey<FormState>();
+  RegistrationStep _currentStep = RegistrationStep.categorySelection;
+  String? _selectedCategory;
   bool _isLoading = false;
-  bool _isMakeLoading = false;
-  bool _isModelLoading = false;
-
-  // Estados do Formulário
-  int? _vehicleYear;
-  VehicleType? _selectedVehicleType;
-  final String _vehicleLicensePlate = '';
+  final _formKey = GlobalKey<FormState>();
   String? _selectedMake;
-  String? _selectedModel;
+  String? _selectedModelId;
+  final _plateController = TextEditingController();
+  final _nicknameController = TextEditingController();
+  List<String> _makes = [];
+  List<Map<String, dynamic>> _models = [];
 
-  // Dados Exemplo (TODO: Substituir)
-  final List<String> _allMakes = [ 'Fiat', 'Volkswagen', 'Chevrolet', 'Ford', 'Toyota', 'Honda', 'Hyundai', 'Renault', 'Jeep', 'Nissan', 'Peugeot', 'Citroën', 'BMW', 'Mercedes-Benz', 'Audi' ];
-  final Map<String, List<String>> _modelsByMake = { 'Fiat': ['Mobi', 'Argo', 'Cronos', 'Strada', 'Toro', 'Pulse', 'Fastback', 'Uno', 'Palio'], 'Volkswagen': ['Gol', 'Voyage', 'Polo', 'Virtus', 'T-Cross', 'Nivus', 'Taos', 'Saveiro', 'Amarok'], /* ... etc ... */ };
-
-  // Cores (Definidas aqui, idealmente viriam do ThemeData)
-  static const Color primaryColor = Color(0xFF00FFFF);
-  static const Color focusColor = Color(0xFF00BFFF);
+  static const Color primaryColor = Color(0xFF00BFFF);
   static final Color errorColor = Colors.redAccent[100]!;
-  static final Color inputBorderColor = Colors.grey[800]!;
+  static final Color inputFillColor = Colors.white.withAlpha(13);
   static final Color labelColor = Colors.grey[400]!;
-  static const Color textColor = Color(0xFFECEFF4);
+  static const Color textColor = Colors.white;
 
-  @override void dispose() { super.dispose(); }
-
-  // --- Função para mostrar diálogo de seleção (COMPLETA) ---
-  Future<String?> _showSelectionDialog({ required BuildContext context, required String title, required List<String> items }) async {
-     String searchQuery = ''; List<String> filteredItems;
-     return showDialog<String>( context: context, builder: (BuildContext dialogContext) {
-        return StatefulBuilder( builder: (context, setDialogState) {
-            if (searchQuery.isNotEmpty) { filteredItems = items.where((i) => i.toLowerCase().contains(searchQuery.toLowerCase())).toList(); }
-            else { filteredItems = List.from(items); }
-            // Retorna AlertDialog CORRETAMENTE
-            return AlertDialog(
-              backgroundColor: Theme.of(context).cardTheme.color ?? Theme.of(context).dialogBackgroundColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)), title: Text(title, style: GoogleFonts.rajdhani()),
-              content: SizedBox( width: double.maxFinite, height: MediaQuery.of(context).size.height * 0.5,
-                child: Column( mainAxisSize: MainAxisSize.min, children: [
-                    TextField( autofocus: true, decoration: const InputDecoration( hintText: 'Buscar...', prefixIcon: Icon(Icons.search), isDense: true ), onChanged: (value) => setDialogState(() => searchQuery = value) ), const SizedBox(height: 10),
-                    Expanded( child: filteredItems.isEmpty ? const Center(child: Text('Nenhum item encontrado.')) : ListView.builder( shrinkWrap: true, itemCount: filteredItems.length, itemBuilder: (context, index) { final item = filteredItems[index]; return ListTile( title: Text(item), onTap: () => Navigator.of(dialogContext).pop(item)); }, ) ) ] ) ),
-              actions: <Widget>[ TextButton( child: const Text('Cancelar'), onPressed: () => Navigator.of(dialogContext).pop()) ], ); }); });
+  @override
+  void dispose() {
+    _plateController.dispose();
+    _nicknameController.dispose();
+    super.dispose();
   }
 
-  // --- Funções para chamar o diálogo (COMPLETAS) ---
-  Future<void> _selectMake() async { setState(() => _isMakeLoading = true); await Future.delayed(700.ms); setState(() => _isMakeLoading = false); if (!mounted) return; final String? selected = await _showSelectionDialog( context: context, title: 'Selecione a Marca', items: _allMakes ); if(selected!=null && selected!=_selectedMake) setState((){_selectedMake=selected; _selectedModel=null;}); }
-  Future<void> _selectModel() async { if(_selectedMake==null) return; setState(() => _isModelLoading = true); await Future.delayed(500.ms); final List<String> availableModels = _modelsByMake[_selectedMake!] ?? []; setState(() => _isModelLoading = false); if (!mounted) return; if (availableModels.isEmpty) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum modelo para esta marca.'))); return; } final String? selected = await _showSelectionDialog( context: context, title: 'Selecione o Modelo ($_selectedMake)', items: availableModels ); if(selected!=null && selected!=_selectedModel) setState(()=>_selectedModel=selected); }
+  Future<void> _fetchMakes(String category) async {
+    setState(() {
+      _isLoading = true;
+      _makes = [];
+      _selectedMake = null;
+      _models = [];
+      _selectedModelId = null;
+    });
 
-  // --- Função de Submit (COMPLETA) ---
-  void _submitForm() async { final isValid = _formKey.currentState?.validate() ?? false; if (!isValid) return; _formKey.currentState?.save(); if (_selectedVehicleType == null || _selectedMake == null || _selectedModel == null) { if(mounted) ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Selecione Tipo, Marca e Modelo.'), backgroundColor: Colors.orangeAccent)); return; } setState(()=>_isLoading=true); await Future.delayed(300.ms); try { final user = FirebaseAuth.instance.currentUser; if (user == null) throw Exception('Usuário não encontrado.'); String userId = user.uid; final Map<String, dynamic> vehicleData = {'userId':userId, 'make':_selectedMake, 'model':_selectedModel, 'year':_vehicleYear, 'type':_selectedVehicleType!.name, 'licensePlate':_vehicleLicensePlate.isNotEmpty?_vehicleLicensePlate.toUpperCase():null, 'createdAt':FieldValue.serverTimestamp()}; print("Salvando primeiro veículo: $vehicleData"); await FirebaseFirestore.instance.collection('vehicles').add(vehicleData); print("Primeiro veículo salvo!"); if (mounted) { ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('${_selectedMake??""} ${_selectedModel??""} adicionado!'), backgroundColor: Colors.green)); Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (ctx)=>const AuthWrapper()), (r)=>false); } } catch (error, stackTrace) { print("!!! ERRO AO SALVAR VEÍCULO !!!\n$error\n$stackTrace"); if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar: $error'), backgroundColor: errorColor)); } finally { if(mounted) setState(()=>_isLoading=false); } }
-
-  // --- Função Helper _inputDecoration (COMPLETA E CORRETA) ---
-  InputDecoration _inputDecoration({ required String labelText, required IconData prefixIcon, required Color labelColor,
-      required Color iconColor, required Color borderColor, required Color focusColor, required Color errorColor }) {
-    // Garante retorno de InputDecoration
-    return InputDecoration( labelText: labelText, labelStyle: GoogleFonts.poppins(textStyle:TextStyle(color: labelColor, fontSize: 14)),
-      prefixIcon: Padding(padding: const EdgeInsets.symmetric(horizontal: 12.0), child: Icon(prefixIcon, color: iconColor, size: 20)),
-      prefixIconConstraints: const BoxConstraints(minWidth:20, minHeight:20), contentPadding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
-      filled: true, fillColor: Colors.white.withOpacity(0.05), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10.0), borderSide: BorderSide(color: borderColor.withOpacity(0.5))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10.0), borderSide: BorderSide(color: focusColor, width: 1.5)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10.0), borderSide: BorderSide(color: errorColor)),
-      focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10.0), borderSide: BorderSide(color: errorColor, width: 1.5)),
-      counterText: "", errorStyle: TextStyle(color: errorColor.withOpacity(0.95), fontSize: 12) );
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('vehicle_models')
+          .where('category', isEqualTo: category)
+          .get();
+      
+      final makes = snapshot.docs.map((doc) => doc.data()['make'] as String).toSet().toList();
+      makes.sort();
+      
+      if (mounted) {
+        setState(() {
+          _makes = makes;
+        });
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao buscar marcas: $e'), backgroundColor: errorColor));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  // --- Função Helper _buildSelectionRow (COMPLETA E CORRETA) ---
-  Widget _buildSelectionRow({ required String label, String? value, VoidCallback? onPressed, required String selectText, String? placeholder, bool isLoading = false}) {
-    const currentTextColor = textColor; final currentLabelColor = labelColor; const currentPrimaryColor = primaryColor;
-    final currentInputBorderColor = inputBorderColor; const currentFocusColor = focusColor; final currentErrorColor = errorColor; const currentIconColor = primaryColor;
-    // Garante retorno de InputDecorator
-    return InputDecorator(
-      decoration: _inputDecoration( labelText: label, prefixIcon: Icons.directions_car_outlined, labelColor: currentLabelColor, iconColor: currentIconColor, borderColor: currentInputBorderColor, focusColor: currentFocusColor, errorColor: currentErrorColor),
-      child: Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Expanded( child: Text( value ?? placeholder ?? 'Não selecionado', overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(textStyle:TextStyle( color: value!=null?currentTextColor:currentLabelColor.withOpacity(0.7), fontSize: 16, fontWeight: value!=null?FontWeight.w500:FontWeight.normal )))),
-          isLoading ? const SizedBox(height: 24, width: 24, child: SpinKitFadingCircle(color: primaryColor, size: 20))
-          : TextButton( style: TextButton.styleFrom( foregroundColor: currentPrimaryColor, padding: const EdgeInsets.symmetric(horizontal: 8) ), onPressed: onPressed,
-              child: Row( mainAxisSize: MainAxisSize.min, children: [ Text(selectText, style: GoogleFonts.poppins(fontSize: 14)), const Icon(Icons.search, size: 20) ] ))])); // Ícone de busca no botão
+  Future<void> _fetchModels(String make) async {
+    setState(() {
+      _isLoading = true;
+      _models = [];
+      _selectedModelId = null;
+    });
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('vehicle_models')
+          .where('category', isEqualTo: _selectedCategory)
+          .where('make', isEqualTo: make)
+          .orderBy('model')
+          .orderBy('year')
+          .get();
+
+      final models = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'name': '${data['model']} ${data['version']} (${data['year']})'
+        };
+      }).toList();
+      
+      if (mounted) {
+        setState(() {
+          _models = models;
+        });
+      }
+    } catch (e) {
+       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao buscar modelos: $e'), backgroundColor: errorColor));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  // --- Método Build Principal (COMPLETO E CORRIGIDO) ---
+  void _submitForm() async {
+    final isValid = _formKey.currentState?.validate() ?? false;
+    if (!isValid) return;
+
+    if (_selectedModelId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione todos os campos obrigatórios.'), backgroundColor: Colors.orangeAccent)
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    
+    // <<< ALTERAÇÃO 2: Usando o user passado via widget, garantido de não ser nulo >>>
+    final user = widget.user;
+
+    try {
+      final vehicleData = {
+        'userId': user.uid,
+        'modelId': _selectedModelId,
+        'licensePlate': _plateController.text.trim().toUpperCase(),
+        'nickname': _nicknameController.text.trim(),
+        'createdAt': FieldValue.serverTimestamp()
+      };
+      
+      await FirebaseFirestore.instance.collection('vehicles').add(vehicleData);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Veículo registrado com sucesso! Bem-vindo(a)!'),
+            backgroundColor: Colors.green));
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (ctx) => const AuthWrapper()),
+          (route) => false,
+        );
+      }
+    } catch (error) {
+       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Erro ao salvar veículo: ${error.toString()}'),
+            backgroundColor: errorColor));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    const currentPrimaryColor = primaryColor; const currentFocusColor = focusColor; final currentErrorColor = errorColor;
-    final currentInputBorderColor = inputBorderColor; final currentLabelColor = labelColor; const currentIconColor = primaryColor;
-
-    // Garante retorno de Scaffold
     return Scaffold(
-      appBar: AppBar( title: Text('Cadastre Seu Veículo', style: GoogleFonts.rajdhani(fontWeight: FontWeight.w600)), automaticallyImplyLeading: false ),
-      body: Center( child: ConstrainedBox( constraints: const BoxConstraints(maxWidth: 600),
-          child: SingleChildScrollView( padding: const EdgeInsets.all(25.0),
-            child: Form( key: _formKey,
-              child: Column( crossAxisAlignment: CrossAxisAlignment.stretch, children: <Widget>[
-                  Text('Último passo: informe os dados do seu veículo principal.', textAlign: TextAlign.center, style: theme.textTheme.titleMedium?.copyWith(color: currentLabelColor)), const SizedBox(height: 35),
-                  // Chamadas CORRETAS para _buildSelectionRow
-                  _buildSelectionRow( label: 'Marca', value: _selectedMake, onPressed: _isLoading ? null : _selectMake, selectText: 'Buscar Marca', isLoading: _isMakeLoading).animate().fadeIn(delay: 100.ms), const SizedBox(height: 20),
-                  _buildSelectionRow( label: 'Modelo', value: _selectedModel, onPressed: _isLoading || _isMakeLoading || _selectedMake==null ? null : _selectModel, selectText: 'Buscar Modelo', placeholder: _selectedMake==null?'Selecione marca':null, isLoading: _isModelLoading).animate().fadeIn(delay: 200.ms), const SizedBox(height: 20),
-                  // Chamadas CORRETAS para _inputDecoration
-                  TextFormField( enabled: !_isLoading, decoration: _inputDecoration(labelText:'Ano', prefixIcon: Icons.calendar_month_outlined, labelColor: currentLabelColor, iconColor: currentIconColor, borderColor: currentInputBorderColor, focusColor: currentFocusColor, errorColor: currentErrorColor), /*...*/).animate().fadeIn(delay: 300.ms), const SizedBox(height: 20),
-                  TextFormField( enabled: !_isLoading, decoration: _inputDecoration(labelText:'Placa (Opcional)', prefixIcon: Icons.badge_outlined, labelColor: currentLabelColor, iconColor: currentIconColor, borderColor: currentInputBorderColor, focusColor: currentFocusColor, errorColor: currentErrorColor), /*...*/).animate().fadeIn(delay: 400.ms), const SizedBox(height: 20),
-                  // Dropdown CORRETO
-                  DropdownButtonFormField<VehicleType>( value: _selectedVehicleType, decoration: _inputDecoration(labelText:'Tipo Combustível/Motor', prefixIcon: Icons.speed_outlined, labelColor: currentLabelColor, iconColor: currentIconColor, borderColor: currentInputBorderColor, focusColor: currentFocusColor, errorColor: currentErrorColor),
-                    items: VehicleType.values.map((t)=>DropdownMenuItem<VehicleType>(value:t, child:Row(children:[Icon(t.icon,size:20,color:t.displayColor), const SizedBox(width:10), Text(t.displayName)]))).toList(), // items OK
-                    onChanged: _isLoading ? null : (v)=>setState(()=>_selectedVehicleType=v), // onChanged OK
-                    validator: (v)=>v==null?'Selecione':null ).animate().fadeIn(delay: 500.ms), const SizedBox(height: 45),
-                  // Botão Salvar
-                  _isLoading ? const Center(child: SpinKitWave(color: currentPrimaryColor, size: 30.0))
-                  : ElevatedButton.icon( onPressed: _submitForm, icon: const Icon(Icons.directions_car_filled), label: const Text('Concluir Cadastro'), style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16))).animate().fadeIn(delay: 600.ms).scale(), const SizedBox(height: 20),
-                ], ), ), ), ), ), ); // Fim Scaffold Body
-  } // Fim build
-} // Fim State
+      appBar: AppBar(
+        title: Text('Cadastre Seu Veículo', style: GoogleFonts.rajdhani(fontWeight: FontWeight.w600)),
+        backgroundColor: Colors.grey[900],
+        automaticallyImplyLeading: false, 
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: AnimatedSwitcher(
+            duration: 300.ms,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: child,
+              );
+            },
+            child: _currentStep == RegistrationStep.categorySelection
+                ? _buildCategorySelection()
+                : _buildDetailsForm(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategorySelection() {
+    return Padding(
+      key: const ValueKey('step0'),
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Selecione a categoria do seu veículo',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.orbitron(fontSize: 22, color: textColor)),
+          const SizedBox(height: 30),
+          _CategoryCard(label: 'Carro ou SUV', icon: Icons.directions_car_filled, onTap: () => _onCategorySelected('car')),
+          _CategoryCard(label: 'Motocicleta', icon: Icons.two_wheeler, onTap: () => _onCategorySelected('motorcycle')),
+          _CategoryCard(label: 'Ônibus', icon: Icons.directions_bus, onTap: () => _onCategorySelected('bus')),
+          _CategoryCard(label: 'Caminhão', icon: Icons.local_shipping, onTap: () => _onCategorySelected('truck')),
+        ].animate(interval: 100.ms).fadeIn().slideY(begin: 0.5),
+      ),
+    );
+  }
+
+  void _onCategorySelected(String category) {
+    _fetchMakes(category);
+    setState(() {
+      _selectedCategory = category;
+      _currentStep = RegistrationStep.detailsForm;
+    });
+  }
+
+  Widget _buildDetailsForm() {
+    return SingleChildScrollView(
+      key: const ValueKey('step1'),
+      padding: const EdgeInsets.all(20.0),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _currentStep = RegistrationStep.categorySelection),
+                icon: const Icon(Icons.arrow_back_ios, size: 16),
+                label: const Text('Mudar Categoria'),
+                style: TextButton.styleFrom(foregroundColor: primaryColor),
+              ),
+            ),
+            const SizedBox(height: 15),
+
+            DropdownButtonFormField<String>(
+              value: _selectedMake,
+              hint: _isLoading ? const Text('Carregando marcas...') : const Text('Selecione a Marca *'),
+              isExpanded: true,
+              items: _makes.map((make) => DropdownMenuItem(value: make, child: Text(make))).toList(),
+              onChanged: _isLoading ? null : (value) {
+                if (value != null) {
+                  setState(() {
+                    _selectedMake = value;
+                    _selectedModelId = null;
+                    _models = [];
+                  });
+                  _fetchModels(value);
+                }
+              },
+              decoration: _inputDecoration(prefixIcon: Icons.factory),
+              dropdownColor: Colors.grey[850],
+              style: const TextStyle(color: textColor, fontSize: 16),
+              validator: (v) => v == null ? 'Selecione uma marca' : null,
+            ),
+            const SizedBox(height: 15),
+
+            DropdownButtonFormField<String>(
+              value: _selectedModelId,
+              hint: Text(_selectedMake == null ? 'Selecione a marca primeiro' : 'Selecione o Modelo *'),
+              isExpanded: true,
+              items: _models.map<DropdownMenuItem<String>>((model) {
+                return DropdownMenuItem<String>(
+                  value: model['id'],
+                  child: Text(model['name'], overflow: TextOverflow.ellipsis),
+                );
+              }).toList(),
+              onChanged: _isLoading ? null : (value) => setState(() => _selectedModelId = value),
+              decoration: _inputDecoration(prefixIcon: Icons.rv_hookup),
+              dropdownColor: Colors.grey[850],
+              style: const TextStyle(color: textColor, fontSize: 16),
+              validator: (v) => v == null ? 'Selecione um modelo' : null,
+            ),
+            const SizedBox(height: 15),
+            
+            TextFormField(
+              controller: _plateController,
+              enabled: !_isLoading,
+              decoration: _inputDecoration(prefixIcon: Icons.badge_outlined, hintText: 'Placa *'),
+              textCapitalization: TextCapitalization.characters,
+              maxLength: 7,
+              validator: (v) => (v == null || v.trim().length < 7) ? 'Placa inválida (7 caracteres)' : null,
+            ),
+            const SizedBox(height: 15),
+            
+            TextFormField(
+              controller: _nicknameController,
+              enabled: !_isLoading,
+              decoration: _inputDecoration(prefixIcon: Icons.label_important_outline, hintText: 'Apelido do Veículo (Opcional)'),
+            ),
+            const SizedBox(height: 40),
+
+            _isLoading
+                ? const Center(child: SpinKitWave(color: primaryColor, size: 30.0))
+                : ElevatedButton.icon(
+                    onPressed: _submitForm,
+                    icon: const Icon(Icons.app_registration),
+                    label: const Text('Concluir Cadastro'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration({required IconData prefixIcon, String? hintText}) {
+    return InputDecoration(
+        hintText: hintText,
+        hintStyle: GoogleFonts.poppins(textStyle: TextStyle(color: labelColor, fontSize: 16)),
+        prefixIcon: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            child: Icon(prefixIcon, color: primaryColor.withAlpha(204), size: 20)),
+        filled: true,
+        fillColor: inputFillColor,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12.0), borderSide: BorderSide.none),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.0), borderSide: BorderSide(color: errorColor)),
+        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.0), borderSide: BorderSide(color: errorColor, width: 1.5)),
+        counterText: "",
+        errorStyle: TextStyle(color: errorColor, fontSize: 12)
+    );
+  }
+}
+
+class _CategoryCard extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _CategoryCard({required this.label, required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.grey[850]!.withAlpha(128),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          child: Row(
+            children: [
+              Icon(icon, size: 30, color: _VehicleRegistrationScreenForSignupState.primaryColor),
+              const SizedBox(width: 20),
+              Text(label, style: GoogleFonts.rajdhani(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              const Spacer(),
+              const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

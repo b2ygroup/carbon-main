@@ -1,10 +1,15 @@
+// lib/screens/auth_screen.dart (COMPLETO E FINAL)
 import 'dart:ui';
-import 'package:flutter/material.dart';
+import 'package:carbon/screens/onboarding_screen.dart';
+import 'package:carbon/services/wallet_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:carbon/screens/onboarding_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -61,28 +66,23 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   }
 
   void _submitLoginForm() async {
-    print("--- Botão Entrar Pressionado ---");
     final isValid = _formKey.currentState?.validate() ?? false;
-    print("Formulário válido: $isValid");
     FocusScope.of(context).unfocus();
     if (!isValid) return;
     setState(() => _isLoading = true);
-    await Future.delayed(500.ms);
 
     try {
-      print("Tentando Firebase signIn...");
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-      print("Firebase signIn SUCESSO!");
+      // A navegação é tratada pelo AuthWrapper no main.dart
     } on FirebaseAuthException catch (err) {
-      print("!!! ERRO AUTH: ${err.code} !!!");
-      String msg = 'Erro.';
+      String msg = 'Erro de autenticação.';
       final map = {
-        'user-not-found': 'Email não existe.',
+        'user-not-found': 'Email não encontrado.',
         'wrong-password': 'Senha incorreta.',
-        'invalid-credential': 'Inválido.',
+        'invalid-credential': 'Credenciais inválidas.',
       };
       msg = map[err.code] ?? err.message ?? msg;
       if (mounted) {
@@ -90,16 +90,57 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           SnackBar(content: Text(msg), backgroundColor: errorColor),
         );
       }
-    } catch (err, s) {
-      print("!!! ERRO GERAL Login: $err\n$s");
+    } catch (err) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erro inesperado.')),
+          const SnackBar(content: Text('Ocorreu um erro inesperado.')),
         );
       }
     } finally {
-      print("--- Finalizando _submitLoginForm ---");
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _googleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final User? user = userCredential.user;
+
+      if (user == null) {
+        throw Exception("Não foi possível obter o usuário do Firebase.");
+      }
+
+      if (userCredential.additionalUserInfo?.isNewUser == true) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'fullName': user.displayName,
+          'email': user.email,
+          'createdAt': FieldValue.serverTimestamp(),
+          'accountType': 'PF',
+          'isAdmin': false,
+        });
+        await WalletService().initializeWallet(user.uid);
+      }
+    } catch (err) {
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erro ao entrar com Google: $err"), backgroundColor: errorColor)
+        );
+      }
+    } finally {
+       if(mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -108,6 +149,74 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       MaterialPageRoute(builder: (ctx) => const OnboardingScreen()),
     );
   }
+
+  void _showContactDialog() {
+    showDialog(
+      context: context, 
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cardBackgroundColor.withOpacity(0.95),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: cardBorderColor)
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.support_agent, color: primaryColor),
+            const SizedBox(width: 10),
+            Text("Entre em Contato", style: GoogleFonts.poppins(color: textColor, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildContactRow(Icons.public, "Website", "group-tau.vercel.app", "https://group-tau.vercel.app/"),
+            _buildContactRow(Icons.email_outlined, "Email", "b2ylion@gmail.com", "mailto:b2ylion@gmail.com"),
+            _buildContactRow(Icons.phone_iphone_rounded, "Celular", "+55 11 96552-0979", "https://wa.me/5511965520979"),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(), 
+            child: const Text("Fechar", style: TextStyle(color: secondaryColor))
+          )
+        ],
+      )
+    );
+  }
+  
+  Widget _buildContactRow(IconData icon, String label, String value, String url) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: InkWell(
+        onTap: () async {
+          final Uri uri = Uri.parse(url);
+          if (!await launchUrl(uri)) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: const Text('Não foi possível abrir o link.'), backgroundColor: errorColor),
+              );
+            }
+          }
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Row(
+          children: [
+            Icon(icon, color: labelColor, size: 20),
+            const SizedBox(width: 15),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: GoogleFonts.poppins(color: labelColor, fontSize: 12)),
+                Text(value, style: GoogleFonts.poppins(color: textColor, fontSize: 14, fontWeight: FontWeight.w500)),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
 
   InputDecoration _inputDecoration({
     required String labelText,
@@ -153,14 +262,195 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final screenSize = MediaQuery.of(context).size;
-
     const currentFocusColor = secondaryColor;
     const currentLabelColor = labelColor;
     const currentIconColor = primaryColor;
     const currentBorderColor = inputBorderColor;
     final currentErrorColor = errorColor;
+
+    final Widget footer = Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+      child: Column(
+        children: [
+          Text(
+            "Desenvolvido por B2Y Group",
+            style: GoogleFonts.poppins(
+              color: labelColor.withOpacity(0.7),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          IconButton(
+            icon: const Icon(Icons.support_agent_rounded, color: primaryColor),
+            tooltip: "Entrar em contato",
+            onPressed: _showContactDialog,
+          )
+          .animate(onPlay: (controller) => controller.repeat())
+          .shake(hz: 2, duration: 1500.ms, curve: Curves.easeInOutCubic)
+          .then(delay: 2000.ms),
+        ],
+      ),
+    );
+
+    final Widget mainContent = Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 500),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.hub_outlined, size: 70, color: primaryColor)
+                  .animate().fadeIn().scale(),
+              const SizedBox(height: 20),
+              Text(
+                'B2Y Carbon Login',
+                style: GoogleFonts.poppins(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ).animate().fadeIn().slideY(),
+              const SizedBox(height: 50),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(25.0),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(30.0),
+                    decoration: BoxDecoration(
+                      color: cardBackgroundColor.withOpacity(0.85),
+                      border: Border.all(color: cardBorderColor),
+                      borderRadius: BorderRadius.circular(25.0),
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            'Login',
+                            style: GoogleFonts.poppins(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: textColor,
+                            ),
+                          ),
+                          const SizedBox(height: 30),
+                          TextFormField(
+                            controller: _emailController,
+                            enabled: !_isLoading,
+                            style: const TextStyle(
+                                color: textColor, letterSpacing: 0.5),
+                            decoration: _inputDecoration(
+                              labelText: 'Email',
+                              prefixIcon: Icons.alternate_email,
+                              labelColor: currentLabelColor,
+                              iconColor: currentIconColor,
+                              borderColor: currentBorderColor,
+                              focusColor: currentFocusColor,
+                              errorColor: currentErrorColor,
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (v) =>
+                                (v == null || v.isEmpty || !v.contains('@'))
+                                    ? 'Email inválido.'
+                                    : null,
+                          ).animate().fadeIn().slideY(),
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: _passwordController,
+                            enabled: !_isLoading,
+                            style: const TextStyle(
+                                color: textColor, letterSpacing: 0.5),
+                            decoration: _inputDecoration(
+                              labelText: 'Senha',
+                              prefixIcon: Icons.lock_outline,
+                              labelColor: currentLabelColor,
+                              iconColor: currentIconColor,
+                              borderColor: currentBorderColor,
+                              focusColor: currentFocusColor,
+                              errorColor: currentErrorColor,
+                            ),
+                            obscureText: true,
+                            validator: (v) => (v == null || v.length < 6)
+                                ? 'A senha deve ter no mínimo 6 caracteres.'
+                                : null,
+                          ).animate().fadeIn().slideY(),
+                          const SizedBox(height: 40),
+                          if (_isLoading)
+                            const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    vertical: 10.0),
+                                child: SpinKitFadingCube(
+                                    color: primaryColor, size: 35.0),
+                              )
+                          else ...[
+                              ElevatedButton.icon(
+                                  icon: const Icon(Icons.login_rounded, size: 20),
+                                  label: const Text('ENTRAR'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: primaryColor,
+                                    foregroundColor: Colors.black,
+                                    minimumSize: const Size(double.infinity, 52),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(15.0),
+                                    ),
+                                    textStyle: GoogleFonts.poppins(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold),
+                                    elevation: 8,
+                                    shadowColor: primaryColor.withOpacity(0.6),
+                                  ),
+                                  onPressed: _submitLoginForm,
+                                ).animate().fadeIn().scale(),
+                              const SizedBox(height: 20),
+                              Row(
+                                children: [
+                                  const Expanded(child: Divider(color: inputBorderColor)),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    child: Text("OU", style: GoogleFonts.poppins(color: labelColor, fontSize: 12)),
+                                  ),
+                                  const Expanded(child: Divider(color: inputBorderColor)),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              OutlinedButton.icon(
+                                icon: Image.asset('assets/images/google_logo.png', height: 20.0),
+                                label: const Text('Entrar com Google'),
+                                onPressed: _googleSignIn,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: textColor,
+                                  minimumSize: const Size(double.infinity, 52),
+                                  side: const BorderSide(color: inputBorderColor),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
+                                  textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500),
+                                ),
+                              ).animate().fadeIn(delay: 200.ms),
+                            ],
+                          const SizedBox(height: 10),
+                          TextButton(
+                            onPressed: _isLoading ? null : _goToRegisterFlow,
+                            child: Text(
+                              'Criar conta',
+                              style: GoogleFonts.poppins(
+                                color: textColor,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ).animate().fadeIn().slideY(),
+            ],
+          ),
+        ),
+      ),
+    );
 
     return Scaffold(
       body: AnimatedBuilder(
@@ -178,139 +468,14 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           ),
           child: child,
         ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 500),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 40),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.hub_outlined, size: 70, color: primaryColor)
-                      .animate().fadeIn().scale(),
-                  const SizedBox(height: 20),
-                  Text(
-                    'B2Y Carbon Login',
-                    style: GoogleFonts.poppins(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: textColor,
-                    ),
-                  ).animate().fadeIn().slideY(),
-                  const SizedBox(height: 50),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(25.0),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-                      child: Container(
-                        padding: const EdgeInsets.all(30.0),
-                        decoration: BoxDecoration(
-                          color: cardBackgroundColor.withOpacity(0.85),
-                          border: Border.all(color: cardBorderColor),
-                          borderRadius: BorderRadius.circular(25.0),
-                        ),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Text(
-                                'Login',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: textColor,
-                                ),
-                              ),
-                              const SizedBox(height: 30),
-                              TextFormField(
-                                controller: _emailController,
-                                style: const TextStyle(
-                                    color: textColor, letterSpacing: 0.5),
-                                decoration: _inputDecoration(
-                                  labelText: 'Email',
-                                  prefixIcon: Icons.alternate_email,
-                                  labelColor: currentLabelColor,
-                                  iconColor: currentIconColor,
-                                  borderColor: currentBorderColor,
-                                  focusColor: currentFocusColor,
-                                  errorColor: currentErrorColor,
-                                ),
-                                keyboardType: TextInputType.emailAddress,
-                                validator: (v) =>
-                                    (v == null || v.isEmpty || !v.contains('@'))
-                                        ? 'Inválido'
-                                        : null,
-                              ).animate().fadeIn().slideY(),
-                              const SizedBox(height: 20),
-                              TextFormField(
-                                controller: _passwordController,
-                                style: const TextStyle(
-                                    color: textColor, letterSpacing: 0.5),
-                                decoration: _inputDecoration(
-                                  labelText: 'Senha',
-                                  prefixIcon: Icons.lock_outline,
-                                  labelColor: currentLabelColor,
-                                  iconColor: currentIconColor,
-                                  borderColor: currentBorderColor,
-                                  focusColor: currentFocusColor,
-                                  errorColor: currentErrorColor,
-                                ),
-                                obscureText: true,
-                                validator: (v) => (v == null || v.length < 6)
-                                    ? 'Min 6 chars'
-                                    : null,
-                              ).animate().fadeIn().slideY(),
-                              const SizedBox(height: 40),
-                              _isLoading
-                                  ? const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                          vertical: 10.0),
-                                      child: SpinKitFadingCube(
-                                          color: primaryColor, size: 35.0),
-                                    )
-                                  : ElevatedButton.icon(
-                                      icon: const Icon(Icons.login_rounded,
-                                          size: 20),
-                                      label: const Text('ENTRAR'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: primaryColor,
-                                        foregroundColor: Colors.black,
-                                        minimumSize:
-                                            const Size(double.infinity, 52),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(15.0),
-                                        ),
-                                        textStyle: GoogleFonts.poppins(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold),
-                                        elevation: 8,
-                                        shadowColor:
-                                            primaryColor.withOpacity(0.6),
-                                      ),
-                                      onPressed: _submitLoginForm,
-                                    ).animate().fadeIn().scale(),
-                              const SizedBox(height: 10),
-                              TextButton(
-                                onPressed: _goToRegisterFlow,
-                                child: Text(
-                                  'Criar conta',
-                                  style: GoogleFonts.poppins(
-                                    color: textColor,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ).animate().fadeIn().slideY(),
-                ],
+        child: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: mainContent,
               ),
-            ),
+              footer,
+            ],
           ),
         ),
       ),

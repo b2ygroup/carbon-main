@@ -1,38 +1,67 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
-  <base href="$FLUTTER_BASE_HREF">
+  <base href="/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Um aplicativo para rastreamento e cálculo de carbono.">
 
-  <!-- iOS meta tags & icons -->
+  <meta name="google-signin-client_id" content="881045701473-ld0lc858d7641n9l5rb4nqfcqf0n8s9n.apps.googleusercontent.com">
+
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="carbon">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>carbon</title>
+  <title>B2Y Carbon</title>
   <link rel="manifest" href="manifest.json">
+
+  <script src="https://js.stripe.com/v3/"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB7h2B1aDBSln6f4GAnUdV9H4XoQ2w1_-0"></script>
+
+  <style>
+    body {
+      background-color: #121212;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    .loading-container { text-align: center; }
+    .loading-container p { font-size: 18px; margin-top: 20px; }
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #00FFFF;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s ease-in-out infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
+  <div id="loading_indicator" class="loading-container">
+    <div class="spinner"></div>
+    <p>Carregando B2Y Carbon...</p>
+  </div>
+
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var indicator = document.getElementById('loading_indicator');
+      if (indicator) {
+        indicator.remove();
+      }
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

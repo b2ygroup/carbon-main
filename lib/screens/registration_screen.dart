@@ -1,4 +1,5 @@
-// lib/screens/registration_screen.dart (VERSÃO MODERNIZADA)
+// lib/screens/registration_screen.dart (VERSÃO CORRIGIDA E COMPLETA COM TIPO DE VEÍCULO)
+import 'package:carbon/models/vehicle_type_enum.dart'; // <<< NOVO: Importação necessária
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -16,21 +17,24 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  // Novos controladores e variáveis de estado
+  // Controladores do formulário
   final _yearController = TextEditingController();
   final _plateController = TextEditingController();
 
-  List<String> _makes = [];
-  List<Map<String, dynamic>> _models = [];
-
-  bool _isFetchingMakes = true;
-  bool _isFetchingModels = false;
-  
+  // Variáveis de estado para os seletores
+  VehicleType? _selectedVehicleType; // <<< NOVO
   String? _selectedMake;
   String? _selectedModelId;
   Map<String, dynamic>? _selectedModelData;
+  
+  List<String> _makes = [];
+  List<Map<String, dynamic>> _models = [];
 
-  // Estilos (mantidos do seu código original)
+  bool _isFetchingMakes = false; // <<< ALTERADO: não inicia mais em true
+  bool _isFetchingModels = false;
+  
+
+  // Paleta de cores da UI
   static const Color primaryColor = Color(0xFF00BFFF);
   static const Color secondaryColor = Color(0xFF00FFFF);
   static const Color errorColor = Color(0xFFFF8A80);
@@ -43,7 +47,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchMakes();
+    // Não busca mais as marcas aqui. A busca dependerá do tipo.
   }
 
   @override
@@ -53,13 +57,20 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     super.dispose();
   }
 
-  // NOVA FUNÇÃO: Busca todas as marcas únicas do Firestore
-  Future<void> _fetchMakes() async {
-    setState(() => _isFetchingMakes = true);
+  /// <<< NOVO: Busca as marcas correspondentes a um TIPO de veículo.
+  Future<void> _fetchMakesForType(VehicleType type) async {
+    setState(() {
+      _isFetchingMakes = true;
+      _makes = [];
+    });
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('vehicle_models').get();
+      final snapshot = await FirebaseFirestore.instance
+          .collection('vehicle_models')
+          .where('type', isEqualTo: type.name) // Filtra pelo tipo
+          .get();
+          
       final makes = snapshot.docs.map((doc) => doc.data()['make'] as String).toSet().toList();
-      makes.sort(); // Opcional: ordenar alfabeticamente
+      makes.sort();
       setState(() {
         _makes = makes;
       });
@@ -72,17 +83,24 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
-  // NOVA FUNÇÃO: Busca modelos para uma marca específica
+  /// <<< ALTERADO: Busca os modelos filtrando também pelo tipo para segurança.
   Future<void> _fetchModelsForMake(String make) async {
+    if (_selectedVehicleType == null) return;
+
     setState(() {
       _isFetchingModels = true;
-      _models = []; // Limpa a lista de modelos anterior
+      _models = [];
     });
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('vehicle_models').where('make', isEqualTo: make).get();
+      final snapshot = await FirebaseFirestore.instance
+          .collection('vehicle_models')
+          .where('type', isEqualTo: _selectedVehicleType!.name) // Garante o filtro de tipo
+          .where('make', isEqualTo: make) // E o filtro de marca
+          .get();
+
       final models = snapshot.docs.map((doc) {
         final data = doc.data();
-        data['id'] = doc.id; // Adiciona o ID do documento ao mapa
+        data['id'] = doc.id;
         return data;
       }).toList();
 
@@ -98,13 +116,67 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
-  // FUNÇÃO ATUALIZADA: Lida com a seleção de marca
+  /// <<< NOVO: Exibe um diálogo para o usuário selecionar o TIPO do veículo.
+  Future<void> _selectVehicleType() async {
+    FocusScope.of(context).unfocus();
+    final VehicleType? type = await showDialog<VehicleType>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: Text('Selecione o Tipo', style: GoogleFonts.orbitron(color: primaryColor)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: VehicleType.values.length,
+              itemBuilder: (context, index) {
+                final item = VehicleType.values[index];
+                return RadioListTile<VehicleType>(
+                  title: Text(item.displayName, style: GoogleFonts.poppins(color: textColor)),
+                  value: item,
+                  groupValue: _selectedVehicleType,
+                  onChanged: (VehicleType? value) => Navigator.of(context).pop(value),
+                  activeColor: secondaryColor,
+                );
+              },
+            ),
+          ),
+           actions: <Widget>[
+            TextButton(
+              child: const Text('Cancelar', style: TextStyle(color: labelColor)),
+              onPressed: () => Navigator.of(context).pop(null),
+            ),
+          ],
+        );
+      }
+    );
+    
+    if (type != null && type != _selectedVehicleType) {
+      setState(() {
+        _selectedVehicleType = type;
+        // Reseta as seleções subsequentes
+        _selectedMake = null;
+        _selectedModelId = null; 
+        _selectedModelData = null;
+      });
+      _fetchMakesForType(type);
+    }
+  }
+
+
+  /// Exibe um diálogo para o usuário selecionar a marca.
   Future<void> _selectMake() async {
+    if (_selectedVehicleType == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um tipo de veículo primeiro.'), backgroundColor: Colors.orangeAccent));
+      return;
+    }
     FocusScope.of(context).unfocus();
     final String? make = await _showSelectionDialog(
       title: 'Selecione a Marca',
       items: _makes,
       currentSelection: _selectedMake,
+      isLoading: _isFetchingMakes,
     );
     if (make != null && make != _selectedMake) {
       setState(() {
@@ -112,12 +184,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         _selectedModelId = null; // Reseta a seleção do modelo
         _selectedModelData = null;
       });
-      // Busca os novos modelos para a marca selecionada
       _fetchModelsForMake(make);
     }
   }
 
-  // FUNÇÃO ATUALIZADA: Lida com a seleção de modelo
+  /// Exibe um diálogo para o usuário selecionar o modelo.
   Future<void> _selectModel() async {
     if (_selectedMake == null) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione uma marca primeiro.'), backgroundColor: Colors.orangeAccent));
@@ -125,32 +196,33 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
     FocusScope.of(context).unfocus();
     
-    // Constrói a lista de nomes de modelo a partir dos dados já buscados
-    final modelNames = _models.map((m) => m['model'] as String).toList();
+    final modelNames = _models.map((m) => "${m['model']} (${m['year']})").toList();
     
     final String? selectedModelName = await _showSelectionDialog(
       title: 'Selecione o Modelo',
       items: modelNames,
-      currentSelection: _selectedModelData?['model'],
+      currentSelection: _selectedModelData != null ? "${_selectedModelData?['model']} (${_selectedModelData?['year']})" : null,
+      isLoading: _isFetchingModels
     );
 
     if (selectedModelName != null) {
-      // Encontra o documento completo do modelo selecionado
-      final selectedModel = _models.firstWhere((m) => m['model'] == selectedModelName);
+      final selectedModel = _models.firstWhere((m) => "${m['model']} (${m['year']})" == selectedModelName);
       setState(() {
         _selectedModelId = selectedModel['id'];
         _selectedModelData = selectedModel;
+        // Preenche o ano automaticamente com base no modelo, mas permite edição.
+        _yearController.text = selectedModel['year']?.toString() ?? '';
       });
     }
   }
   
-  // FUNÇÃO ATUALIZADA: Salva o veículo no formato correto
+  /// Valida o formulário e salva os dados do veículo na coleção 'vehicles'.
   void _submitForm() async {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) return;
 
     if (_selectedModelId == null) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione Marca e Modelo.'), backgroundColor: Colors.orangeAccent));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione Tipo, Marca e Modelo.'), backgroundColor: Colors.orangeAccent));
       return;
     }
 
@@ -162,9 +234,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
       final vehicleData = {
         'userId': user.uid,
-        'modelId': _selectedModelId, // SALVANDO O ID DO MODELO
-        'year': int.tryParse(_yearController.text) ?? 0,
+        'modelId': _selectedModelId,
         'licensePlate': _plateController.text.trim().toUpperCase(),
+        'year': int.parse(_yearController.text.trim()),
         'createdAt': FieldValue.serverTimestamp(),
       };
       
@@ -174,7 +246,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         final make = _selectedModelData?['make'] ?? '';
         final model = _selectedModelData?['model'] ?? '';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('$make $model registrado!'),
+            content: Text('$make $model ${_yearController.text} registrado!'),
             backgroundColor: Colors.green));
         Navigator.of(context).pop(); 
       }
@@ -189,11 +261,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
-  // FUNÇÃO DE DIÁLOGO ATUALIZADA para mostrar um spinner de loading
+  /// Widget genérico para exibir um diálogo de seleção com uma lista de itens.
   Future<String?> _showSelectionDialog({
     required String title,
     required List<String> items,
     String? currentSelection,
+    bool isLoading = false,
   }) async {
     return showDialog<String>(
       context: context,
@@ -201,7 +274,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         return AlertDialog(
           backgroundColor: Colors.grey[900],
           title: Text(title, style: GoogleFonts.orbitron(color: primaryColor)),
-          content: _isFetchingMakes || _isFetchingModels
+          content: isLoading
             ? const SizedBox(height: 100, child: Center(child: SpinKitFadingCircle(color: secondaryColor, size: 40.0)))
             : SizedBox(
                 width: double.maxFinite,
@@ -231,7 +304,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  // Funções de build de UI (mantidas e adaptadas)
+  // --- Widgets de Construção da UI ---
+
   InputDecoration _inputDecoration({required String labelText, required IconData prefixIcon}) {
     return InputDecoration(
       labelText: labelText,
@@ -239,6 +313,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       prefixIcon: Padding(padding: const EdgeInsets.symmetric(horizontal: 12.0), child: Icon(prefixIcon, color: iconColor.withOpacity(0.8), size: 20)),
       filled: true,
       fillColor: inputFillColor,
+      counterText: "",
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12.0), borderSide: const BorderSide(color: inputBorderColor)),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.0), borderSide: const BorderSide(color: inputBorderColor)),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.0), borderSide: const BorderSide(color: secondaryColor, width: 1.5)),
@@ -247,13 +322,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   Widget _buildSelectionRow({
     required String label,
+    required IconData icon, // <<< NOVO: ícone customizável
     String? value,
     VoidCallback? onPressed,
-    required String selectText,
     String? placeholder,
   }) {
     return InputDecorator(
-      decoration: _inputDecoration(labelText: label, prefixIcon: Icons.category_outlined),
+      decoration: _inputDecoration(labelText: label, prefixIcon: icon),
       child: GestureDetector(
         onTap: onPressed,
         child: Row(
@@ -270,7 +345,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 )),
               )
             ),
-            Icon(Icons.search, size: 20, color: primaryColor)
+            const Icon(Icons.search, size: 20, color: primaryColor)
           ],
         ),
       ),
@@ -280,9 +355,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[900],
       appBar: AppBar(
         title: Text('Registrar Novo Veículo', style: GoogleFonts.rajdhani(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.grey[900],
+        backgroundColor: const Color(0xFF1A1A1A),
+        elevation: 0,
       ),
       body: Center(
         child: ConstrainedBox(
@@ -294,30 +371,44 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text('Informe os dados do veículo', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+                  Text('Informe os dados do veículo', textAlign: TextAlign.center, style: GoogleFonts.rajdhani(color: Colors.white, fontSize: 20)),
                   const SizedBox(height: 30),
                   
+                  // <<< NOVO: Seletor de Tipo de Veículo
                   _buildSelectionRow(
-                    label: 'Marca*',
-                    value: _selectedMake,
-                    onPressed: _isLoading ? null : _selectMake,
-                    selectText: 'Selecionar',
+                    label: 'Tipo de Veículo*',
+                    icon: _selectedVehicleType?.icon ?? Icons.category_outlined,
+                    value: _selectedVehicleType?.displayName,
+                    onPressed: _isLoading ? null : _selectVehicleType,
+                    placeholder: 'Selecione o tipo',
                   ).animate().fadeIn(delay: 100.ms),
                   const SizedBox(height: 15),
 
+                  // <<< ALTERADO: Seletor de Marca
+                  _buildSelectionRow(
+                    label: 'Marca*',
+                    icon: Icons.factory_outlined,
+                    value: _selectedMake,
+                    onPressed: _isLoading || _selectedVehicleType == null ? null : _selectMake,
+                    placeholder: _selectedVehicleType == null ? 'Selecione o tipo primeiro' : 'Selecione a marca',
+                  ).animate().fadeIn(delay: 200.ms),
+                  const SizedBox(height: 15),
+
+                  // <<< ALTERADO: Seletor de Modelo
                   _buildSelectionRow(
                     label: 'Modelo*',
-                    value: _selectedModelData?['model'],
+                    icon: Icons.directions_car_filled_outlined,
+                    value: _selectedModelData != null ? "${_selectedModelData?['model']} (${_selectedModelData?['year']})" : null,
                     onPressed: _isLoading || _selectedMake == null ? null : _selectModel,
-                    selectText: 'Selecionar',
                     placeholder: _selectedMake == null ? 'Selecione a marca primeiro' : 'Selecione o modelo',
-                  ).animate().fadeIn(delay: 200.ms),
+                  ).animate().fadeIn(delay: 300.ms),
                   const SizedBox(height: 15),
 
                   TextFormField(
                     controller: _yearController,
                     enabled: !_isLoading,
-                    decoration: _inputDecoration(labelText: 'Ano*', prefixIcon: Icons.calendar_month_outlined),
+                    style: const TextStyle(color: textColor),
+                    decoration: _inputDecoration(labelText: 'Ano*', prefixIcon: Icons.calendar_today_outlined),
                     keyboardType: TextInputType.number,
                     maxLength: 4,
                     validator: (v) {
@@ -327,12 +418,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       if (yr == null || yr < 1950 || yr > DateTime.now().year + 1) return 'Ano inválido';
                       return null;
                     },
-                  ).animate().fadeIn(delay: 300.ms),
+                  ).animate().fadeIn(delay: 400.ms),
                   const SizedBox(height: 15),
                   
                   TextFormField(
                     controller: _plateController,
                     enabled: !_isLoading,
+                    style: const TextStyle(color: textColor),
                     decoration: _inputDecoration(labelText: 'Placa*', prefixIcon: Icons.badge_outlined),
                     textCapitalization: TextCapitalization.characters,
                     maxLength: 7,
@@ -341,7 +433,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       if (v.trim().length < 7) return 'Placa deve ter 7 caracteres';
                       return null;
                     },
-                  ).animate().fadeIn(delay: 400.ms),
+                  ).animate().fadeIn(delay: 500.ms),
                   const SizedBox(height: 40),
 
                   _isLoading
@@ -354,6 +446,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                               backgroundColor: primaryColor,
                               foregroundColor: Colors.black87,
                               padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold))
                         ).animate().fadeIn(delay: 600.ms).scale(),
                 ],

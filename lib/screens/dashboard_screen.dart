@@ -1,4 +1,4 @@
-// lib/screens/dashboard_screen.dart (VERSÃO COM GPS, CÂMERA E BOTÃO ADMIN)
+// lib/screens/dashboard_screen.dart (VERSÃO FINAL COM STRIPE E GPS NA WEB ATIVADO)
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -21,6 +21,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import 'package:carbon/providers/user_provider.dart';
 import 'package:carbon/screens/registration_screen.dart';
@@ -33,9 +34,6 @@ import 'package:carbon/widgets/trip_chart_placeholder.dart';
 import 'package:carbon/widgets/ad_banner_placeholder.dart';
 import 'package:carbon/widgets/minimap_placeholder.dart';
 import 'package:carbon/screens/transaction_history_screen.dart';
-
-// ▼▼▼ ALTERAÇÃO ▼▼▼
-// 1. Import da nova tela de administração.
 import 'package:carbon/screens/admin_screen.dart';
 
 class _InfoRowSimulator extends StatelessWidget {
@@ -110,7 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   bool _isFetchingDistance = false;
   bool _isFetchingCurrentLocationCity = false;
   Stream<double>? _totalCo2OffsetStream;
-  bool _isRegisteringCompensation = false;
+  bool _isInitiatingPayment = false;
   static const double _brlPerKgCo2 = 0.25;
 
   final FocusNode _simulatedOriginFocusNode = FocusNode();
@@ -154,12 +152,61 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         return 0.0;
       });
   }
-  
+
+  /// Inicia o processo de pagamento para a compensação de carbono.
+  /// Chama a Cloud Function que cria uma sessão de checkout no Stripe.
+  Future<void> _initiateCompensationPayment({required double cost, required double co2ToOffset}) async {
+    // ATENÇÃO: Substitua pelo seu ID de PREÇO real do Stripe (modo de teste/produção).
+    const String carbonOffsetPriceId = "price_1P8g8Y4Ie0XV5ATGXRL1Vv8H"; 
+
+    if (!mounted) return;
+    setState(() => _isInitiatingPayment = true);
+    
+    try {
+      final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+      final callable = functions.httpsCallable('createStripeCheckout');
+
+      final HttpsCallableResult result = await callable.call<Map<String, dynamic>>({
+        'priceId': carbonOffsetPriceId, 
+        'userId': _currentUser?.uid,
+        'co2ToOffset': co2ToOffset,
+        'costBRL': cost,
+      });
+
+      final checkoutUrl = result.data?['url'];
+      if (checkoutUrl != null) {
+        final uri = Uri.parse(checkoutUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          throw 'Não foi possível abrir a página de pagamento.';
+        }
+      } else {
+        throw 'Não foi possível obter a URL de pagamento do servidor.';
+      }
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao iniciar pagamento: ${e.toString()}'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isInitiatingPayment = false);
+      }
+    }
+  }
+
+  /// Exibe o diálogo de compensação com a lógica de pagamento real via Stripe.
   Future<void> _showCompensationDialog({required double co2ToOffset, required double cost}) async {
     if (!mounted) return;
+    
+    setState(() => _isInitiatingPayment = false);
+
     await showDialog(
       context: context,
-      barrierDismissible: !_isRegisteringCompensation,
+      barrierDismissible: !_isInitiatingPayment,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -174,12 +221,11 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
-                      'Ajude o planeta compensando sua pegada de carbono.',
+                      'Ajude o planeta compensando sua pegada de carbono. Você será redirecionado para um ambiente de pagamento seguro.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white.withAlpha(200)),
+                      style: TextStyle(color: Colors.white.withOpacity(0.8)),
                     ),
                     const SizedBox(height: 20),
                     Text(
@@ -194,34 +240,15 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                       '(${co2ToOffset.toStringAsFixed(2)} kg de CO₂)',
                       style: const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Use o PIX para contribuir (simulado):',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.qr_code_2_rounded, size: 140, color: Colors.black),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Chave PIX: contribuicao@b2y.com',
-                      style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 12),
-                    ),
                   ],
                 ),
               ),
               actionsAlignment: MainAxisAlignment.center,
               actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               actions: [
-                if (_isRegisteringCompensation)
+                if (_isInitiatingPayment)
                   const Padding(
-                    padding: EdgeInsets.only(bottom: 12.0),
+                    padding: EdgeInsets.all(12.0),
                     child: SpinKitFadingCircle(color: Colors.greenAccent, size: 30),
                   )
                 else
@@ -229,8 +256,8 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       ElevatedButton.icon(
-                        icon: const Icon(Icons.check_circle),
-                        label: const Text('Já Paguei, Compensar Agora'),
+                        icon: const Icon(Icons.payment),
+                        label: const Text('Pagar com PIX, Cartão ou Boleto'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.greenAccent[700],
                           foregroundColor: Colors.white,
@@ -238,21 +265,15 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         onPressed: () async {
-                           setDialogState(() {
-                            _isRegisteringCompensation = true;
-                          });
-                          await _handleCompensation(co2ToOffset: co2ToOffset, cost: cost);
-                          if(mounted){
-                            setDialogState(() {
-                              _isRegisteringCompensation = false;
-                            });
-                            Navigator.of(dialogContext).pop();
+                          await _initiateCompensationPayment(cost: cost, co2ToOffset: co2ToOffset);
+                          if(mounted) {
+                             Navigator.of(dialogContext).pop();
                           }
                         },
                       ),
                       TextButton(
                         onPressed: () => Navigator.of(dialogContext).pop(),
-                        child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
+                        child: const Text('Agora não', style: TextStyle(color: Colors.white70)),
                       ),
                     ],
                   )
@@ -262,29 +283,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         );
       },
     );
-  }
-
-  Future<void> _handleCompensation({required double co2ToOffset, required double cost}) async {
-    if (_currentUser == null) {
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro: Usuário não logado.'), backgroundColor: Colors.red));
-      return;
-    }
-
-    try {
-      await FirebaseFirestore.instance.collection('carbon_offsets').add({
-        'userId': _currentUser!.uid,
-        'offsetAmountKg': co2ToOffset,
-        'costBRL': cost,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compensação registrada com sucesso! Obrigado!'), backgroundColor: Colors.green));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao registrar compensação: $e'), backgroundColor: Colors.red));
-      }
-    }
   }
 
   @override
@@ -817,87 +815,97 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     }
   }
   
+  /// Inicia ou para o monitoramento da viagem via GPS.
   Future<void> _toggleTracking() async {
+    // A restrição para web foi removida conforme solicitado.
+    // Lembre-se das limitações de GPS em navegadores.
+    
     if (_isProcessingStartImages || _isProcessingEndImage || _isLoadingGpsSave) return;
 
-    if (_isTracking) { 
+    if (_isTracking) {
+      // Lógica para PARAR o tracking
       setState(() => _isLoadingGpsSave = true);
       await _positionStreamSubscriptionForTrip?.cancel();
       _positionStreamSubscriptionForTrip = null;
-      
+
       String finalDestinationCity = 'Destino desconhecido';
       try {
-        Position? endPosition = await Geolocator.getLastKnownPosition() ?? await Geolocator.getCurrentPosition();
+        Position? endPosition = await Geolocator.getLastKnownPosition();
+        endPosition ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
         finalDestinationCity = await _getCityFromCoordinates(endPosition);
       } catch (e) {
-        // Silently fail
+        debugPrint("Erro ao obter localização final: $e");
       }
 
       await _captureAndUploadEndOdometerImage();
 
-      if (!mounted) { 
+      if (!mounted) {
         setState(() => _isLoadingGpsSave = false);
         return;
       }
 
       final DateTime tripEndTime = DateTime.now();
       final double finalDistanceKm = _accumulatedDistanceMeters / 1000.0;
-      
+
       if (_currentUser != null && _selectedVehicleIdForTrip != null && _selectedVehicleTypeForTrip != null && _tripStartTime != null && finalDistanceKm > 0.01) {
-        
         final TripCalculationResult results = await _carbonService.getTripCalculationResults(
           vehicleType: _selectedVehicleTypeForTrip!,
           distanceKm: finalDistanceKm,
         );
 
-        final String effectiveDestination = finalDestinationCity != 'Local Desconhecido' 
-            ? finalDestinationCity 
+        final String effectiveDestination = finalDestinationCity != 'Destino desconhecido'
+            ? finalDestinationCity
             : (_destinationController.text.trim().isNotEmpty ? _destinationController.text.trim() : 'Destino desconhecido');
-        
+
         final Map<String, dynamic> tripData = {
-          'userId': _currentUser!.uid, 'vehicleId': _selectedVehicleIdForTrip!, 'vehicleType': _selectedVehicleTypeForTrip!.name,
-          'distanceKm': finalDistanceKm, 'startTime': Timestamp.fromDate(_tripStartTime!),
-          'endTime': Timestamp.fromDate(tripEndTime), 'durationMinutes': tripEndTime.difference(_tripStartTime!).inMinutes,
+          'userId': _currentUser!.uid,
+          'vehicleId': _selectedVehicleIdForTrip!,
+          'vehicleType': _selectedVehicleTypeForTrip!.name,
+          'distanceKm': finalDistanceKm,
+          'startTime': Timestamp.fromDate(_tripStartTime!),
+          'endTime': Timestamp.fromDate(tripEndTime),
+          'durationMinutes': tripEndTime.difference(_tripStartTime!).inMinutes,
           'origin': _originController.text.trim().isNotEmpty ? _originController.text.trim() : 'Origem desconhecida',
           'destination': effectiveDestination,
-          'co2EmittedKg': results.co2EmittedKg,   
-          'co2SavedKg': results.co2SavedKg,                
-          'creditsEarned': results.creditsEarned,             
-          'createdAt': FieldValue.serverTimestamp(), 'calculationMethod': 'gps',
-          'plateImageURL': _plateImageURL, 'odometerStartImageURL': _odometerStartImageURL,
+          'co2EmittedKg': results.co2EmittedKg,
+          'co2SavedKg': results.co2SavedKg,
+          'creditsEarned': results.creditsEarned,
+          'createdAt': FieldValue.serverTimestamp(),
+          'calculationMethod': 'gps',
+          'plateImageURL': _plateImageURL,
+          'odometerStartImageURL': _odometerStartImageURL,
           'odometerEndImageURL': _odometerEndImageURL,
-          'recognizedPlate': _recognizedPlateText, 'recognizedOdometerStart': _recognizedOdometerStartText,
+          'recognizedPlate': _recognizedPlateText,
+          'recognizedOdometerStart': _recognizedOdometerStartText,
           'recognizedOdometerEnd': _recognizedOdometerEndText,
         };
 
         try {
-            await FirebaseFirestore.instance.collection('trips').add(tripData);
-            if (mounted) {
-              if (results.isEmission) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem com emissão registrada!'), backgroundColor: Colors.orange));
-                _showCompensationDialog(co2ToOffset: results.co2EmittedKg, cost: results.compensationCostBRL);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem salva! Créditos calculados.'), backgroundColor: Colors.green));
-                
-                if (results.creditsEarned > 0) {
-                  await WalletService().addCreditsToWallet(_currentUser!.uid, results.creditsEarned);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+          await FirebaseFirestore.instance.collection('trips').add(tripData);
+          if (mounted) {
+            if (results.isEmission) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem com emissão registrada!'), backgroundColor: Colors.orange));
+              _showCompensationDialog(co2ToOffset: results.co2EmittedKg, cost: results.compensationCostBRL);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem salva! Créditos calculados.'), backgroundColor: Colors.green));
+
+              if (results.creditsEarned > 0) {
+                await WalletService().addCreditsToWallet(_currentUser!.uid, results.creditsEarned);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('+ ${results.creditsEarned.toStringAsFixed(4)} B2Y Coins na sua carteira!'),
                         backgroundColor: Colors.amber[800],
-                      )
-                    );
-                  }
+                      ));
                 }
               }
             }
+          }
         } catch (e) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar viagem: $e'), backgroundColor: Colors.redAccent));
         }
-        
-        _resetTripState();
 
+        _resetTripState();
       } else {
         String message = 'Não foi possível salvar. ';
         if (_currentUser == null) message += 'Erro de usuário. ';
@@ -908,24 +916,24 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         
         setState(() => _isLoadingGpsSave = false);
       }
-      
-    } else { 
+    } else {
+      // Lógica para INICIAR o tracking
       if (_selectedVehicleIdForTrip == null || _selectedVehicleTypeForTrip == null) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um veículo.'), backgroundColor: Colors.orangeAccent));
         return;
       }
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled && mounted) { 
+      if (!serviceEnabled && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS desativado.')));
         return;
-      } 
+      }
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permissão negada.')));
           return;
-        } 
+        }
       }
       if (permission == LocationPermission.deniedForever) {
         if (mounted) {
@@ -935,44 +943,48 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       }
 
       bool startImagesOk = await _captureAndUploadStartImages();
-      if (!startImagesOk) { 
-        if(mounted) {
-            setState(() { 
-                _plateImageURL = null; _odometerStartImageURL = null; 
-                _recognizedPlateText = null; _recognizedOdometerStartText = null; 
-            });
+      if (!startImagesOk) {
+        if (mounted) {
+          setState(() {
+            _plateImageURL = null;
+            _odometerStartImageURL = null;
+            _recognizedPlateText = null;
+            _recognizedOdometerStartText = null;
+          });
         }
         return;
       }
       if (!mounted) return;
       setState(() {
-        _isTracking = true; 
-        _accumulatedDistanceMeters = 0.0; 
+        _isTracking = true;
+        _accumulatedDistanceMeters = 0.0;
         _currentDistanceKm = 0.0;
-        _lastPositionForTripStart = null; 
+        _lastPositionForTripStart = null;
         _tripStartTime = DateTime.now();
       });
       const LocationSettings locSettings = LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10);
       _positionStreamSubscriptionForTrip = Geolocator.getPositionStream(locationSettings: locSettings).listen(
         (Position position) {
-            if (mounted && _isTracking) {
-                setState(() {
-                  if (_lastPositionForTripStart != null) {
-                      double delta = Geolocator.distanceBetween(
-                        _lastPositionForTripStart!.latitude, _lastPositionForTripStart!.longitude,
-                        position.latitude, position.longitude,
-                      );
-                      if (delta > 1.0) {
-                        _accumulatedDistanceMeters += delta;
-                        _currentDistanceKm = _accumulatedDistanceMeters / 1000.0;
-                      }
-                  }
-                  _lastPositionForTripStart = position;
-                });
-            }
+          if (mounted && _isTracking) {
+            setState(() {
+              if (_lastPositionForTripStart != null) {
+                double delta = Geolocator.distanceBetween(
+                  _lastPositionForTripStart!.latitude,
+                  _lastPositionForTripStart!.longitude,
+                  position.latitude,
+                  position.longitude,
+                );
+                if (delta > 1.0) {
+                  _accumulatedDistanceMeters += delta;
+                  _currentDistanceKm = _accumulatedDistanceMeters / 1000.0;
+                }
+              }
+              _lastPositionForTripStart = position;
+            });
+          }
         },
         onError: (error) {
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro GPS: $error'), backgroundColor: Colors.redAccent));
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro GPS: $error'), backgroundColor: Colors.redAccent));
         },
         cancelOnError: false,
       );
@@ -1971,10 +1983,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   Widget build(BuildContext context) {
     final user = _currentUser;
     final theme = Theme.of(context);
-
-    // ▼▼▼ ALTERAÇÃO ▼▼▼
-    // 2. Obtém o UserProvider com `listen: true` para que o widget possa
-    //    reconstruir quando a permissão de admin mudar.
+    
     final userProvider = Provider.of<UserProvider>(context);
     
     final displayName = userProvider.userName?.isNotEmpty == true
@@ -2027,8 +2036,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // ▼▼▼ ALTERAÇÃO ▼▼▼
-                                // 3. Adição do botão de Painel Admin, visível condicionalmente.
                                 if (userProvider.canAccessAdminPanel)
                                   IconButton(
                                     icon: const Icon(Icons.admin_panel_settings, color: Colors.amberAccent),
@@ -2039,7 +2046,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                                       );
                                     },
                                   ),
-                                // ▲▲▲ FIM DA ALTERAÇÃO ▲▲▲
                                 
                                 IconButton(
                                   icon: Icon(Icons.info_outline_rounded, color: accentColor.withAlpha(180)),

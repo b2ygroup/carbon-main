@@ -1,4 +1,4 @@
-// lib/screens/marketplace_screen.dart (COM LAYOUT RESPONSIVO E IMAGENS AJUSTADAS)
+// lib/screens/marketplace_screen.dart (VERSÃO COM CORREÇÃO DO LOADING)
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,6 +8,8 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:carbon/models/product_model.dart';
 import 'package:carbon/services/wallet_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart'; // <<< NOVO: Para formatação de números
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -21,9 +23,13 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   final String? userId = FirebaseAuth.instance.currentUser?.uid;
   bool _isProcessingPurchase = false;
 
+  // Formatter para exibir os números no padrão brasileiro
+  final NumberFormat _coinFormatter = NumberFormat("#,##0", "pt_BR");
+
   static const Color primaryColor = Color(0xFF00BFFF);
   static const Color textColor = Colors.white;
-  static final Color cardBackgroundColor = Colors.grey[850]!.withAlpha(200);
+  static final Color errorColor = Colors.redAccent[100]!;
+  static final Color successColor = Colors.greenAccent[400]!;
 
   Future<List<Product>> _fetchProducts() async {
     final snapshot = await FirebaseFirestore.instance
@@ -34,7 +40,39 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     return snapshot.docs.map((doc) => Product.fromFirestore(doc)).toList();
   }
 
-  void _showPurchaseDialog(Product product) {
+  void _handlePurchase(Product product) {
+    if (product.stripePriceId != null && product.stripePriceId!.isNotEmpty) {
+      _purchaseWithStripe(product);
+    } else {
+      _showCoinPurchaseDialog(product);
+    }
+  }
+
+  Future<void> _purchaseWithStripe(Product product) async {
+    setState(() => _isProcessingPurchase = true);
+    try {
+      final String checkoutUrl = await _walletService.purchaseProductWithStripe(priceId: product.stripePriceId!);
+      final uri = Uri.parse(checkoutUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        throw 'Não foi possível abrir a URL de pagamento.';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: errorColor),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingPurchase = false);
+      }
+    }
+  }
+
+  void _showCoinPurchaseDialog(Product product) {
+    _isProcessingPurchase = false;
     showDialog(
       context: context,
       barrierDismissible: !_isProcessingPurchase,
@@ -44,49 +82,68 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             return AlertDialog(
               backgroundColor: Colors.grey[900],
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text(product.name, style: GoogleFonts.orbitron(color: primaryColor)),
+              title: Text("Confirmar Resgate", style: GoogleFonts.orbitron(color: primaryColor)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(product.description, style: GoogleFonts.poppins(color: textColor.withOpacity(0.8))),
+                  SizedBox(
+                    height: 100,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(product.imageUrl, fit: BoxFit.contain),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(product.name, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(product.description, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: textColor.withOpacity(0.7), fontSize: 14)),
                   const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      const Icon(Icons.toll_outlined, color: Colors.amberAccent),
-                      const SizedBox(width: 8),
-                      Text('${product.priceCoins} B2Y Coins', style: GoogleFonts.orbitron(color: Colors.amberAccent, fontSize: 18, fontWeight: FontWeight.bold)),
-                    ],
+                  Chip(
+                    backgroundColor: Colors.amber.withOpacity(0.1),
+                    avatar: const Icon(Icons.toll_outlined, color: Colors.amberAccent),
+                    // <<< ALTERADO: usa o formatter para exibir o preço
+                    label: Text('Custo: ${_coinFormatter.format(product.priceCoins)} B2Y Coins', style: GoogleFonts.orbitron(color: Colors.amberAccent, fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
+              actionsAlignment: MainAxisAlignment.center,
               actions: [
                 if (!_isProcessingPurchase)
                   TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar', style: TextStyle(color: Colors.white70))),
-                
-                _isProcessingPurchase
-                  ? const Padding(padding: EdgeInsets.all(12.0), child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: () async {
-                        if (userId == null) return;
-                        
-                        setDialogState(() => _isProcessingPurchase = true);
+                SizedBox(
+                  width: 150,
+                  height: 40,
+                  child: _isProcessingPurchase
+                      ? const Center(child: SpinKitFadingCircle(color: primaryColor, size: 25))
+                      : ElevatedButton(
+                          onPressed: () async {
+                            if (userId == null) return;
+                            setDialogState(() => _isProcessingPurchase = true);
+                            
+                            final result = await _walletService.executePurchase(userId: userId!, product: product);
+                            
+                            // <<< ADICIONADO: Garante que o loading pare
+                            setDialogState(() => _isProcessingPurchase = false);
 
-                        final result = await _walletService.executePurchase(userId: userId!, product: product);
-                        
-                        if (mounted) {
-                          Navigator.of(ctx).pop();
-                          if (result == "success") {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('"${product.name}" resgatado com sucesso!'), backgroundColor: Colors.green));
-                          } else {
-                            final errorMessage = result.replaceFirst("Exception: ", "");
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha na compra: $errorMessage'), backgroundColor: Colors.redAccent));
-                          }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.black),
-                      child: const Text('Confirmar Compra'),
-                    ),
+                            if (mounted) {
+                              Navigator.of(ctx).pop();
+                              if (result == "success") {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('"${product.name}" resgatado com sucesso!'), backgroundColor: successColor, behavior: SnackBarBehavior.floating),
+                                );
+                              } else {
+                                final errorMessage = result.replaceFirst("Exception: ", "");
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Falha na compra: $errorMessage'), backgroundColor: errorColor, behavior: SnackBarBehavior.floating),
+                                );
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.black),
+                          child: const Text('Confirmar'),
+                        ),
+                ),
               ],
             );
           },
@@ -97,15 +154,16 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ▼▼▼ LÓGICA PARA RESPONSIVIDADE DA GRADE ▼▼▼
     final screenWidth = MediaQuery.of(context).size.width;
-    final int crossAxisCount = (screenWidth / 220).floor().clamp(2, 5); // Pelo menos 2, no máximo 5 colunas
-    final double childAspectRatio = (screenWidth > 600) ? 0.9 : 0.8; // Cards um pouco mais altos em telas menores
+    final int crossAxisCount = (screenWidth / 220).floor().clamp(2, 5);
+    final double childAspectRatio = (screenWidth > 600) ? 0.9 : 0.8;
 
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: Text('Loja B2Y', style: GoogleFonts.rajdhani(fontWeight: FontWeight.w700)),
+        title: Text('Loja B2Y', style: GoogleFonts.rajdhani(fontWeight: FontWeight.w700, fontSize: 24)),
         backgroundColor: Colors.grey[900],
+        elevation: 0,
         actions: [
           if (userId != null)
             Padding(
@@ -115,9 +173,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                 builder: (context, snapshot) {
                   final balance = snapshot.data ?? 0.0;
                   return Chip(
-                    avatar: const Icon(Icons.toll_outlined, color: Colors.amberAccent),
-                    label: Text(balance.toStringAsFixed(4), style: const TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                    backgroundColor: Colors.black.withOpacity(0.3),
+                    avatar: const Icon(Icons.toll_outlined, color: Colors.amberAccent, size: 18),
+                    // <<< ALTERADO: usa o formatter para exibir o saldo
+                    label: Text(_coinFormatter.format(balance), style: const TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                    backgroundColor: Colors.black38,
                   );
                 },
               ),
@@ -137,19 +196,22 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             return const Center(child: Text('Nenhum produto disponível no momento.', style: TextStyle(color: Colors.white70)));
           }
           final products = productSnapshot.data!;
-
           return GridView.builder(
             padding: const EdgeInsets.all(16.0),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount, // Usa a contagem de colunas dinâmica
+              crossAxisCount: crossAxisCount,
               crossAxisSpacing: 16.0,
               mainAxisSpacing: 16.0,
-              childAspectRatio: childAspectRatio, // Usa a proporção dinâmica
+              childAspectRatio: childAspectRatio,
             ),
             itemCount: products.length,
             itemBuilder: (context, index) {
               final product = products[index];
-              return _ProductCard(product: product, onTap: () => _showPurchaseDialog(product));
+              return _ProductCard(
+                product: product, 
+                formatter: _coinFormatter, // <<< NOVO: Passa o formatter para o card
+                onTap: () => _handlePurchase(product)
+              );
             },
           ).animate().fadeIn(duration: 300.ms);
         },
@@ -161,12 +223,16 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 class _ProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
-  const _ProductCard({required this.product, required this.onTap});
+  final NumberFormat formatter; // <<< NOVO: Recebe o formatter
+  const _ProductCard({required this.product, required this.onTap, required this.formatter});
 
   @override
   Widget build(BuildContext context) {
+    final bool isRealMoneyPurchase = product.stripePriceId != null && product.stripePriceId!.isNotEmpty;
+    final cardColor = Colors.grey[850]!.withAlpha(200);
+
     return Card(
-      color: _MarketplaceScreenState.cardBackgroundColor,
+      color: cardColor,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
@@ -174,18 +240,16 @@ class _ProductCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Área da imagem com altura proporcional e conteúdo centralizado
             Expanded(
-              flex: 5, // Dá mais espaço para a área da imagem
+              flex: 5,
               child: Container(
-                color: Colors.black.withOpacity(0.2),
-                padding: const EdgeInsets.all(8.0), // Um respiro para a imagem
+                color: Colors.black12,
+                padding: const EdgeInsets.all(8.0),
                 child: Hero(
                   tag: 'product_image_${product.id}',
                   child: Image.network(
                     product.imageUrl,
-                    // ▼▼▼ AJUSTE DA IMAGEM PARA CABER INTEIRA ▼▼▼
-                    fit: BoxFit.contain, 
+                    fit: BoxFit.contain,
                     loadingBuilder: (context, child, loadingProgress) {
                       if (loadingProgress == null) return child;
                       return const Center(child: SpinKitFadingCircle(color: _MarketplaceScreenState.primaryColor, size: 25));
@@ -197,9 +261,8 @@ class _ProductCard extends StatelessWidget {
                 ),
               ),
             ),
-            // Área de informações do produto
             Expanded(
-              flex: 3, // Menos espaço, apenas para o texto
+              flex: 3,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
                 child: Column(
@@ -212,17 +275,24 @@ class _ProductCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const Spacer(), // Empurra o preço para baixo
-                    Row(
-                      children: [
-                        const Icon(Icons.toll_outlined, color: Colors.amberAccent, size: 16),
-                        const SizedBox(width: 4),
-                        Text(
-                          product.priceCoins.toString(),
-                          style: GoogleFonts.orbitron(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
-                      ],
-                    ),
+                    const Spacer(),
+                    if (isRealMoneyPurchase && product.priceReal != null)
+                      Text(
+                        'R\$ ${product.priceReal!.toStringAsFixed(2)}',
+                        style: GoogleFonts.orbitron(color: _MarketplaceScreenState.successColor, fontWeight: FontWeight.bold, fontSize: 15),
+                      )
+                    else
+                      Row(
+                        children: [
+                          const Icon(Icons.toll_outlined, color: Colors.amberAccent, size: 16),
+                          const SizedBox(width: 4),
+                          Text(
+                            // <<< ALTERADO: usa o formatter para exibir o preço
+                            formatter.format(product.priceCoins),
+                            style: GoogleFonts.orbitron(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),

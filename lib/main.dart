@@ -22,7 +22,6 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // ▼▼▼ CONFIGURAÇÃO CORRETA E SEGURA DO STRIPE ▼▼▼
   // A inicialização do Stripe só acontece se NÃO for a plataforma web.
   if (!kIsWeb) {
     Stripe.publishableKey = 'pk_test_51RlGaY4Ie0XV5ATGx5aA75CGqomoet2FJPvHRTmit9VjUW6TL7f30Wx1uriWfloIREMlf4LZFry5p5zVAKDEN3Ic00urqBvXdh';

@@ -1,16 +1,16 @@
-// lib/widgets/indicator_card.dart (COMPLETO E CORRIGIDO)
+// lib/widgets/indicator_card.dart
+
 import 'package:flutter/material.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shimmer/shimmer.dart';
 
 class IndicatorCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color accentColor;
+  final Widget? actionButton;
   final bool isLoading;
-  final bool hasError;
-  final Widget? actionButton; // Parâmetro para o botão, como "Compensar"
 
   const IndicatorCard({
     super.key,
@@ -18,96 +18,104 @@ class IndicatorCard extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.accentColor,
-    this.isLoading = false,
-    this.hasError = false,
     this.actionButton,
+    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cardBgColor = Colors.black.withAlpha((255 * 0.3).round());
-    final borderColor = accentColor.withAlpha((255 * 0.8).round());
-    final glowColor = accentColor.withAlpha((255 * 0.5).round());
-    final primaryTextColor = Colors.white.withAlpha((255 * 0.95).round());
-    final secondaryTextColor = Colors.white.withAlpha((255 * 0.7).round());
-    final errorColor = Colors.redAccent.withAlpha((255 * 0.8).round());
+    final bool isActionCard = title == 'CARTEIRA (R\$)';
 
-    const double iconSize = 20.0;
-    const double titleFontSize = 10.0;
-    const double valueFontSize = 16.0;
-
-    Widget content;
-
-    if (isLoading) {
-      content = Shimmer.fromColors(
-        baseColor: Colors.grey[850]!,
-        highlightColor: Colors.grey[700]!,
+    return Card(
+      color: accentColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      // Adiciona uma elevação maior para o card de ação, destacando-o
+      elevation: isActionCard ? 8 : 4,
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Container(height: 20, width: 60, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-            const SizedBox(height: 6),
-            Container(height: 14, width: 40, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(2))),
+            Row(
+              children: [
+                Icon(icon, color: Colors.white.withAlpha((255 * 0.9).round()), size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: GoogleFonts.rajdhani(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            if (isLoading)
+              const Center(child: SpinKitFadingCircle(color: Colors.white, size: 30))
+            else if (isActionCard)
+              // Layout de AÇÃO para o card "Comprar Moedas"
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      value, // "Comprar Moedas"
+                      style: GoogleFonts.rajdhani(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900, // Extra negrito para destaque máximo
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_ios, // Ícone de navegação
+                    color: Colors.white,
+                    size: 18,
+                  )
+                ],
+              )
+            else
+              // Layout de DADOS para os outros indicadores
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value,
+                  style: GoogleFonts.orbitron(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    shadows: [
+                      const Shadow(
+                        blurRadius: 4.0,
+                        color: Color.fromARGB(128, 0, 0, 0),
+                        offset: Offset(1.0, 1.0),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                ),
+              ),
+            if (actionButton != null) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.bottomRight,
+                child: actionButton!,
+              )
+            ] else
+              const Spacer(),
           ],
         ),
-      );
-    } else {
-      content = Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Icon(
-            hasError ? Icons.error_outline : icon,
-            size: iconSize,
-            color: hasError ? errorColor : accentColor,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title.toUpperCase(),
-            textAlign: TextAlign.center,
-            style: GoogleFonts.rajdhani(
-              fontSize: titleFontSize,
-              fontWeight: FontWeight.bold,
-              color: secondaryTextColor,
-              letterSpacing: 0.5,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              hasError ? "Erro" : value,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: valueFontSize,
-                fontWeight: FontWeight.w600,
-                color: hasError ? errorColor.withAlpha(204) : primaryTextColor,
-              ),
-              maxLines: 1,
-            ),
-          ),
-          // Se o botão de ação for fornecido, ele é adicionado aqui
-          if (actionButton != null) ...[
-            const SizedBox(height: 6),
-            actionButton!,
-          ]
-        ],
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: cardBgColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: hasError ? errorColor.withAlpha(127) : borderColor, width: 1.0),
-        boxShadow: [
-          BoxShadow(color: hasError ? errorColor.withAlpha(51) : glowColor.withAlpha(76), blurRadius: 8, spreadRadius: 0),
-        ],
       ),
-      child: content,
     );
   }
 }

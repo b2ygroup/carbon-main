@@ -35,19 +35,19 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
   // Substitua os valores 'stripePriceId' pelos IDs de Preço REAIS do seu painel Stripe.
   final List<CoinPackage> _packages = [
     CoinPackage(
-      stripePriceId: 'price_1RlIsQ4Ie0XV5ATGB0X5KtaM',
+      stripePriceId: 'price_1RmEfe4Ie0XV5ATG4ZnN4D3Z',
       name: 'Pacote Bronze',
       description: '100 moedas',
       priceDisplay: 'R\$ 4,99',
     ),
     CoinPackage(
-      stripePriceId: 'price_1RlJGu4Ie0XV5ATGNDDcpsCJ',
+      stripePriceId: 'price_1RmEg24Ie0XV5ATGDtp8LnL1',
       name: 'Pacote Prata',
       description: '200 moedas',
       priceDisplay: 'R\$ 8,99',
     ),
     CoinPackage(
-      stripePriceId: 'price_1RlT1z4Ie0XV5ATGBRhI9ATa',
+      stripePriceId: 'price_1RmEhE4Ie0XV5ATGkGrpIjwP',
       name: 'Pacote Ouro',
       description: '300 moedas',
       priceDisplay: 'R\$ 17,99',
@@ -161,7 +161,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
                       duration: const Duration(milliseconds: 300),
                       child: isLoading
                           ? const SpinKitFadingCircle(
-                              key: const ValueKey('loader'), // <<< CORRIGIDO
+                              key: ValueKey('loader'), // <<< CORRIGIDO
                               color: Colors.cyan,
                               size: 28,
                             )

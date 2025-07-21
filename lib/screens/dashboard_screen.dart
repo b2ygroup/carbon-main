@@ -1,11 +1,15 @@
-// lib/screens/dashboard_screen.dart (VERSÃO FINAL COM STRIPE E GPS NA WEB ATIVADO)
+// lib/screens/dashboard_screen.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:carbon/screens/buy_coins_screen.dart';
 import 'package:carbon/screens/marketplace_screen.dart';
 import 'package:carbon/screens/premium_screen.dart';
+import 'package:carbon/screens/sell_coins_screen.dart'; 
 import 'package:carbon/services/wallet_service.dart';
+import 'package:carbon/screens/trade_b2y_screen.dart';
+import 'package:carbon/widgets/manual_pix_dialog.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -71,13 +75,13 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProviderStateMixin {
-  // Todas as variáveis de estado...
   bool _isTracking = false;
   bool _isLoadingGpsSave = false;
   double _currentDistanceKm = 0.0;
   String? _selectedVehicleIdForTrip;
   VehicleType? _selectedVehicleTypeForTrip;
   String? _selectedVehicleDisplayNameForTrip;
+  String? _selectedVehiclePlateForTrip; // <<< VARIÁVEL ADICIONADA
   StreamSubscription<Position>? _positionStreamSubscriptionForTrip;
   Position? _lastPositionForTripStart;
   double _accumulatedDistanceMeters = 0.0;
@@ -110,7 +114,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   Stream<double>? _totalCo2OffsetStream;
   bool _isInitiatingPayment = false;
   static const double _brlPerKgCo2 = 0.25;
-
   final FocusNode _simulatedOriginFocusNode = FocusNode();
   final FocusNode _simulatedDestinationFocusNode = FocusNode();
 
@@ -123,6 +126,23 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       _initializeOffsetStream();
     }
     _simulatedDestinationFocusNode.addListener(_onDestinationFocusChange);
+  }
+  
+  @override
+  void dispose() {
+    _positionStreamSubscriptionForTrip?.cancel();
+    _originController.dispose();
+    _destinationController.dispose();
+    _tabController?.dispose();
+    _simulatedDistanceKmController.dispose();
+    _simulatedOriginController.dispose();
+    _simulatedDestinationController.dispose();
+    
+    _simulatedOriginFocusNode.dispose();
+    _simulatedDestinationFocusNode.removeListener(_onDestinationFocusChange);
+    _simulatedDestinationFocusNode.dispose();
+
+    super.dispose();
   }
   
   void _onDestinationFocusChange() {
@@ -153,10 +173,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       });
   }
 
-  /// Inicia o processo de pagamento para a compensação de carbono.
-  /// Chama a Cloud Function que cria uma sessão de checkout no Stripe.
   Future<void> _initiateCompensationPayment({required double cost, required double co2ToOffset}) async {
-    // ATENÇÃO: Substitua pelo seu ID de PREÇO real do Stripe (modo de teste/produção).
     const String carbonOffsetPriceId = "price_1P8g8Y4Ie0XV5ATGXRL1Vv8H"; 
 
     if (!mounted) return;
@@ -198,110 +215,105 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     }
   }
 
-  /// Exibe o diálogo de compensação com a lógica de pagamento real via Stripe.
-  Future<void> _showCompensationDialog({required double co2ToOffset, required double cost}) async {
+Future<void> _showCompensationDialog({required double co2ToOffset, required double cost}) async {
     if (!mounted) return;
     
-    setState(() => _isInitiatingPayment = false);
+    const String carbonOffsetPriceId = "price_1RnIIc4Ie0XV5ATGhfVx9F8R";
 
     await showDialog(
       context: context,
-      barrierDismissible: !_isInitiatingPayment,
       builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: const Color(0xFF2c2c2e),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text(
-                'Compensar Emissão de CO₂',
-                style: GoogleFonts.orbitron(color: Colors.greenAccent[400], fontWeight: FontWeight.bold),
+        return AlertDialog(
+          backgroundColor: const Color(0xFF2c2c2e),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Compensar Emissão de CO₂',
+            style: GoogleFonts.orbitron(color: Colors.greenAccent[400], fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Ajude o planeta compensando sua pegada de carbono.',
                 textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white.withOpacity(0.8)),
               ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Ajude o planeta compensando sua pegada de carbono. Você será redirecionado para um ambiente de pagamento seguro.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white.withOpacity(0.8)),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'VALOR PARA COMPENSAR:',
-                      style: GoogleFonts.rajdhani(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
-                    Text(
-                      'R\$ ${cost.toStringAsFixed(2)}',
-                      style: GoogleFonts.orbitron(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      '(${co2ToOffset.toStringAsFixed(2)} kg de CO₂)',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ],
+              const SizedBox(height: 20),
+              Text(
+                'VALOR PARA COMPENSAR:',
+                style: GoogleFonts.rajdhani(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              Text(
+                'R\$ ${cost.toStringAsFixed(2)}',
+                style: GoogleFonts.orbitron(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                '(${co2ToOffset.toStringAsFixed(2)} kg de CO₂)',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          actions: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.qr_code),
+                  label: const Text('Pagar com PIX'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    showManualPixDialog(
+                      context,
+                      amount: cost,
+                      pixKey: "334.021.198-11",
+                    );
+                  },
                 ),
-              ),
-              actionsAlignment: MainAxisAlignment.center,
-              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              actions: [
-                if (_isInitiatingPayment)
-                  const Padding(
-                    padding: EdgeInsets.all(12.0),
-                    child: SpinKitFadingCircle(color: Colors.greenAccent, size: 30),
-                  )
-                else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.payment),
-                        label: const Text('Pagar com PIX, Cartão ou Boleto'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.greenAccent[700],
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        onPressed: () async {
-                          await _initiateCompensationPayment(cost: cost, co2ToOffset: co2ToOffset);
-                          if(mounted) {
-                             Navigator.of(dialogContext).pop();
-                          }
-                        },
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        child: const Text('Agora não', style: TextStyle(color: Colors.white70)),
-                      ),
-                    ],
-                  )
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.credit_card),
+                  label: const Text('Cartão ou Boleto via Stripe'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[600]),
+                  onPressed: () async {
+                    Navigator.of(dialogContext).pop();
+                    try {
+                        final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+                        final callable = functions.httpsCallable('createStripeCheckout');
+                        final result = await callable.call<Map<String, dynamic>>({
+                            'priceId': carbonOffsetPriceId,
+                            'payment_method_types': ['card', 'boleto'],
+                            'costBRL': cost,
+                            'co2ToOffset': co2ToOffset,
+                        });
+                        final url = result.data['url'];
+                        if (mounted && url != null && await canLaunchUrl(Uri.parse(url))) {
+                            await launchUrl(Uri.parse(url));
+                        } else {
+                            throw Exception("Não foi possível abrir a página de pagamento.");
+                        }
+                    } catch(e) {
+                        if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.redAccent));
+                        }
+                    }
+                  },
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
+                ),
               ],
-            );
-          },
+            )
+          ],
         );
       },
     );
   }
 
-  @override
-  void dispose() {
-    _positionStreamSubscriptionForTrip?.cancel();
-    _originController.dispose();
-    _destinationController.dispose();
-    _tabController?.dispose();
-    _simulatedDistanceKmController.dispose();
-    _simulatedOriginController.dispose();
-    _simulatedDestinationController.dispose();
-    
-    _simulatedOriginFocusNode.dispose();
-    _simulatedDestinationFocusNode.removeListener(_onDestinationFocusChange);
-    _simulatedDestinationFocusNode.dispose();
-
-    super.dispose();
-  }
-  
   Future<String> _getCityFromCoordinates(Position position) async {
     try {
       const String cloudFunctionUrl = 'https://getcityfromcoordinates-ki3ven47oa-uc.a.run.app';
@@ -713,6 +725,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     return success;
   }
   
+  // <<< MÉTODO CORRIGIDO >>>
   Future<Map<String, dynamic>?> _fetchAndShowVehicleSelectionDialog() async {
     if (_currentUser == null) return null;
     final vehiclesSnapshot = await FirebaseFirestore.instance.collection('vehicles').where('userId', isEqualTo: _currentUser!.uid).get();
@@ -739,6 +752,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         'modelId': modelId,
         'label': '${modelData['make'] ?? '?'} ${modelData['model'] ?? '?'} (${modelData['year']})',
         'type': type,
+        'licensePlate': vehicleInfo['licensePlate'] as String?,
       };
     }).where((v) => v != null).cast<Map<String, dynamic>>().toList();
 
@@ -772,7 +786,8 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
   }
 
-  void _handleVehicleSelection(String vehicleId, VehicleType? vehicleType, String displayName) {
+  // <<< MÉTODO CORRIGIDO >>>
+  void _handleVehicleSelection(String vehicleId, VehicleType? vehicleType, String displayName, String? licensePlate) {
     if (_isTracking || _isProcessingStartImages || _isProcessingEndImage || _isLoadingGpsSave ) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não é possível alterar o veículo durante uma operação.'), backgroundColor: Colors.orangeAccent));
         return;
@@ -782,14 +797,17 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         _selectedVehicleIdForTrip = null; 
         _selectedVehicleTypeForTrip = null;
         _selectedVehicleDisplayNameForTrip = null;
+        _selectedVehiclePlateForTrip = null;
       } else {
         _selectedVehicleIdForTrip = vehicleId; 
         _selectedVehicleTypeForTrip = vehicleType;
         _selectedVehicleDisplayNameForTrip = displayName;
+        _selectedVehiclePlateForTrip = licensePlate;
       }
     });
   }
   
+  // <<< MÉTODO CORRIGIDO >>>
   Future<void> _showVehicleSelectionDialogForTracking() async {
     if (_isTracking) return;
     
@@ -799,6 +817,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         selectedVehicleInfo['userVehicleId'],
         selectedVehicleInfo['type'] as VehicleType?,
         selectedVehicleInfo['label'],
+        selectedVehicleInfo['licensePlate'] as String?,
       );
     }
   }
@@ -815,15 +834,12 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     }
   }
   
-  /// Inicia ou para o monitoramento da viagem via GPS.
+  // <<< MÉTODO CORRIGIDO >>>
   Future<void> _toggleTracking() async {
-    // A restrição para web foi removida conforme solicitado.
-    // Lembre-se das limitações de GPS em navegadores.
-    
     if (_isProcessingStartImages || _isProcessingEndImage || _isLoadingGpsSave) return;
 
     if (_isTracking) {
-      // Lógica para PARAR o tracking
+      // Lógica para PARAR a viagem (continua a mesma)
       setState(() => _isLoadingGpsSave = true);
       await _positionStreamSubscriptionForTrip?.cancel();
       _positionStreamSubscriptionForTrip = null;
@@ -917,11 +933,12 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         setState(() => _isLoadingGpsSave = false);
       }
     } else {
-      // Lógica para INICIAR o tracking
+      // LÓGICA PARA INICIAR a viagem
       if (_selectedVehicleIdForTrip == null || _selectedVehicleTypeForTrip == null) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um veículo.'), backgroundColor: Colors.orangeAccent));
         return;
       }
+      
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS desativado.')));
@@ -943,51 +960,76 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       }
 
       bool startImagesOk = await _captureAndUploadStartImages();
-      if (!startImagesOk) {
-        if (mounted) {
-          setState(() {
-            _plateImageURL = null;
-            _odometerStartImageURL = null;
-            _recognizedPlateText = null;
-            _recognizedOdometerStartText = null;
-          });
+
+      if (startImagesOk) {
+        final String registeredPlate = _selectedVehiclePlateForTrip ?? '';
+        final String recognizedPlate = _recognizedPlateText ?? '';
+        
+        final String normalizedRegisteredPlate = registeredPlate.replaceAll(RegExp(r'[^A-Z0-9]'), '').toUpperCase();
+        final String normalizedRecognizedPlate = recognizedPlate.replaceAll(RegExp(r'[^A-Z0-9]'), '').toUpperCase();
+
+        if (normalizedRegisteredPlate.isEmpty) {
+          if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro: Veículo selecionado não possui placa cadastrada.'), backgroundColor: Colors.redAccent));
+          _resetTripState();
+          return;
         }
-        return;
-      }
-      if (!mounted) return;
-      setState(() {
-        _isTracking = true;
-        _accumulatedDistanceMeters = 0.0;
-        _currentDistanceKm = 0.0;
-        _lastPositionForTripStart = null;
-        _tripStartTime = DateTime.now();
-      });
-      const LocationSettings locSettings = LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10);
-      _positionStreamSubscriptionForTrip = Geolocator.getPositionStream(locationSettings: locSettings).listen(
-        (Position position) {
-          if (mounted && _isTracking) {
-            setState(() {
-              if (_lastPositionForTripStart != null) {
-                double delta = Geolocator.distanceBetween(
-                  _lastPositionForTripStart!.latitude,
-                  _lastPositionForTripStart!.longitude,
-                  position.latitude,
-                  position.longitude,
-                );
-                if (delta > 1.0) {
-                  _accumulatedDistanceMeters += delta;
-                  _currentDistanceKm = _accumulatedDistanceMeters / 1000.0;
+
+        if (normalizedRecognizedPlate != normalizedRegisteredPlate) {
+          if(mounted) {
+            await showDialog(context: context, builder: (ctx) => AlertDialog(
+              title: const Text('Placa Não Correspondente'),
+              content: Text('Atenção: A placa fotografada ($recognizedPlate) não corresponde à do veículo selecionado ($registeredPlate).'),
+              actions: [TextButton(onPressed: ()=>Navigator.of(ctx).pop(), child: const Text('OK'))],
+            ));
+          }
+          _resetTripState();
+          return;
+        }
+
+        if (!mounted) return;
+        setState(() {
+          _isTracking = true;
+          _accumulatedDistanceMeters = 0.0;
+          _currentDistanceKm = 0.0;
+          _lastPositionForTripStart = null;
+          _tripStartTime = DateTime.now();
+        });
+        const LocationSettings locSettings = LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10);
+        _positionStreamSubscriptionForTrip = Geolocator.getPositionStream(locationSettings: locSettings).listen(
+          (Position position) {
+            if (mounted && _isTracking) {
+              setState(() {
+                if (_lastPositionForTripStart != null) {
+                  double delta = Geolocator.distanceBetween(
+                    _lastPositionForTripStart!.latitude,
+                    _lastPositionForTripStart!.longitude,
+                    position.latitude,
+                    position.longitude,
+                  );
+                  if (delta > 1.0) {
+                    _accumulatedDistanceMeters += delta;
+                    _currentDistanceKm = _accumulatedDistanceMeters / 1000.0;
+                  }
                 }
-              }
-              _lastPositionForTripStart = position;
+                _lastPositionForTripStart = position;
+              });
+            }
+          },
+          onError: (error) {
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro GPS: $error'), backgroundColor: Colors.redAccent));
+          },
+          cancelOnError: false,
+        );
+      } else {
+         if (mounted) {
+            setState(() {
+              _plateImageURL = null;
+              _odometerStartImageURL = null;
+              _recognizedPlateText = null;
+              _recognizedOdometerStartText = null;
             });
           }
-        },
-        onError: (error) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro GPS: $error'), backgroundColor: Colors.redAccent));
-        },
-        cancelOnError: false,
-      );
+      }
     }
   }
 
@@ -1011,6 +1053,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         _selectedVehicleIdForTrip = null;
         _selectedVehicleTypeForTrip = null;
         _selectedVehicleDisplayNameForTrip = null;
+        _selectedVehiclePlateForTrip = null; // <<< LIMPEZA DA PLACA
       });
     }
   }
@@ -1203,8 +1246,27 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                 final List<Map<String, dynamic>> indicatorsData = [
                   {'title': 'KM TOTAL', 'isLoading': tripIndicatorsLoading, 'value': '${totalKm.toStringAsFixed(1)} km', 'icon': Icons.drive_eta_outlined, 'color': kmColor, 'action': null},
                   {'title': 'CO₂ SEQUESTRADO', 'isLoading': tripIndicatorsLoading, 'value': '${totalCO2Saved.toStringAsFixed(2)} kg', 'icon': Icons.eco, 'color': co2SavedColor, 'action': null},
-                  {'title': 'CO₂ A COMPENSAR', 'isLoading': tripIndicatorsLoading || offsetIsLoading, 'value': '${netCo2ToOffset > 0 ? netCo2ToOffset.toStringAsFixed(2) : "0.00"} kg', 'icon': Icons.smoke_free, 'color': co2EmittedColor, 
-                    'action': (netCo2ToOffset > 0.01 && !tripIndicatorsLoading && !offsetIsLoading) ? TextButton(onPressed: () => _showCompensationDialog(co2ToOffset: netCo2ToOffset, cost: netCo2ToOffset * _brlPerKgCo2), style: TextButton.styleFrom(foregroundColor: Colors.white, backgroundColor: co2EmittedColor.withAlpha(204), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 8), visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)), child: const Text('COMPENSAR')) : null
+                  {
+                    'title': 'CO₂ A COMPENSAR', 
+                    'isLoading': tripIndicatorsLoading || offsetIsLoading, 
+                    'value': '${netCo2ToOffset > 0 ? netCo2ToOffset.toStringAsFixed(2) : "0.00"} kg', 
+                    'icon': Icons.smoke_free, 
+                    'color': co2EmittedColor, 
+                    'action': (netCo2ToOffset > 0.01 && !tripIndicatorsLoading && !offsetIsLoading) 
+                      ? TextButton(
+                          onPressed: () => _showCompensationDialog(
+                              co2ToOffset: netCo2ToOffset,
+                              cost: netCo2ToOffset * _brlPerKgCo2),
+                          style: TextButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: co2EmittedColor, 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                          child: const Text('COMPENSAR'),
+                        ) 
+                      : null
                   },
                   {'title': 'B2Y COINS', 'isLoading': walletIsLoading, 'value': b2yCoins.toStringAsFixed(4), 'icon': Icons.toll_outlined, 'color': b2yCoinColor, 'action': null},
                   {'title': 'CO₂ COMPENSADO', 'isLoading': offsetIsLoading, 'value': '${totalCo2Offset.toStringAsFixed(2)} kg', 'icon': Icons.shield_outlined, 'color': co2OffsetColor, 'action': null},
@@ -1218,7 +1280,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                       crossAxisCount: 2,
                       mainAxisSpacing: 12.0,
                       crossAxisSpacing: 12.0,
-                      childAspectRatio: 1.8,
+                      childAspectRatio: 1.7,
                     ),
                     itemCount: indicatorsData.length,
                     shrinkWrap: true,
@@ -1488,7 +1550,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               optionsBuilder: _fetchCityAutocompleteSuggestions,
               onSelected: (String selection) {
                 _simulatedDestinationController.text = selection;
-                 _simulatedDestinationFocusNode.unfocus(); // Dispara o _onDestinationFocusChange
+                 _simulatedDestinationFocusNode.unfocus();
               },
               fieldViewBuilder: (BuildContext context, TextEditingController fieldTextEditingController, FocusNode fieldFocusNode, VoidCallback onFieldSubmitted) {
                 if (_simulatedDestinationController.text != fieldTextEditingController.text) {
@@ -1717,7 +1779,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                     side: BorderSide(color: isSelected ? primaryColor : Colors.grey[700]!, width: isSelected ? 2.0 : 0.8),
                   ),
                   child: InkWell(
-                    onTap: () => _handleVehicleSelection(userVehicleId, vehicleType, displayName),
+                    onTap: () => _handleVehicleSelection(userVehicleId, vehicleType, displayName, vehicleData['licensePlate'] as String?),
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
@@ -1741,43 +1803,64 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   }
 
   Widget _buildNavigationButtons() {
-      final buttonColor = Colors.grey[800];
-      const iconColor = Colors.white70; const textColor = Colors.white70;
-      return Padding( padding: const EdgeInsets.only(top: 16.0),
-        child: Wrap( spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: [
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: buttonColor,
-            foregroundColor: textColor,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-          icon: const Icon(Icons.receipt_long, size: 18, color: iconColor),
-          label: const Text('Extrato', style: TextStyle(fontSize: 13)),
-          onPressed: () {
-            if (mounted) {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const TransactionHistoryScreen()),
-              );
-            }
-          },
+    return Card(
+      elevation: 2,
+      color: Colors.grey[850],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          alignment: WrapAlignment.center,
+          children: [
+            _buildNavButton(
+              context,
+              icon: Icons.receipt_long,
+              label: 'Extrato',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransactionHistoryScreen())),
+            ),
+            _buildNavButton(
+              context,
+              icon: Icons.history,
+              label: 'Histórico',
+              onPressed: _navigateToTripHistory,
+            ),
+            _buildNavButton(
+              context,
+              icon: Icons.store,
+              label: 'Loja B2Y',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MarketplaceScreen())),
+            ),
+            _buildNavButton(
+              context,
+              icon: Icons.star,
+              label: 'Seja PRO',
+              isHighlight: true,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PremiumScreen())),
+            ),
+          ],
         ),
-          ElevatedButton.icon( style: ElevatedButton.styleFrom( backgroundColor: buttonColor, foregroundColor: textColor, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) ), icon: const Icon(Icons.history, size: 18, color: iconColor), label: const Text('Histórico', style: TextStyle(fontSize: 13)), onPressed: _navigateToTripHistory),
-          ElevatedButton.icon(
-             style: ElevatedButton.styleFrom( backgroundColor: buttonColor, foregroundColor: textColor, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) ),
-             icon: const Icon(Icons.store, size: 18, color: iconColor),
-             label: const Text('Loja B2Y', style: TextStyle(fontSize: 13)),
-             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MarketplaceScreen()))
-          ),
-          ElevatedButton.icon(
-             style: ElevatedButton.styleFrom( backgroundColor: Colors.cyan.withOpacity(0.2), foregroundColor: Colors.cyanAccent, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) ),
-             icon: const Icon(Icons.star, size: 18, color: Colors.cyanAccent),
-             label: const Text('Seja PRO', style: TextStyle(fontSize: 13)),
-             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PremiumScreen()))
-          ),
-        ], ).animate().fadeIn(delay: 800.ms), );
+      ),
+    ).animate().fadeIn(delay: 800.ms);
   }
 
+  Widget _buildNavButton(BuildContext context, {required IconData icon, required String label, VoidCallback? onPressed, bool isHighlight = false}) {
+    final color = isHighlight ? Colors.cyanAccent : Colors.white70;
+    final backgroundColor = isHighlight ? Colors.cyan.withOpacity(0.2) : Colors.grey[800];
+
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label, style: TextStyle(fontSize: 13, color: color)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: backgroundColor,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+  
   Widget _buildLastThreeTripsSection(String userId, Color accentColor) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -1978,7 +2061,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       },
     );
   }
-
+  
   @override
   Widget build(BuildContext context) {
     final user = _currentUser;
@@ -2000,6 +2083,22 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     const double appBarExpandedHeight = 150.0; 
 
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (ctx) => const TradeB2YScreen()),
+          );
+        },
+        label: const Text("Trade B2Y"),
+        icon: const Icon(Icons.storefront_outlined),
+        backgroundColor: accentColor,
+        foregroundColor: Colors.black,
+        elevation: 8,
+        ).animate().scale(delay: 300.ms
+      ),
+      
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      
       body: NestedScrollView(
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
           return <Widget>[
@@ -2050,7 +2149,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                                 IconButton(
                                   icon: Icon(Icons.info_outline_rounded, color: accentColor.withAlpha(180)),
                                   tooltip: 'Sobre',
-                                  onPressed: _showAboutDialog,
+                                  onPressed: () {}, //_showAboutDialog,
                                 ),
                                 IconButton(
                                   icon: Icon(Icons.power_settings_new_rounded, color: accentColor),

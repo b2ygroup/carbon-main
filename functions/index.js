@@ -1,4 +1,4 @@
-// functions/index.js (VERSÃO FINAL, COMPLETA E SEM ABREVIAÇÕES)
+// functions/index.js
 
 import {onRequest} from "firebase-functions/v2/https";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
@@ -14,13 +14,15 @@ import Stripe from "stripe";
 admin.initializeApp();
 const db = getFirestore();
 
-// --- Configuração de CORS ---
+// --- Configuração de CORS para as funções HTTP ---
 const allowedOrigins = [
   "https://carbono-tracker-app.web.app",
   "http://localhost:58265",
   "http://localhost:63284",
   "http://localhost:50709",
   "http://localhost:62965",
+  "http://localhost:56802",
+  "http://localhost:53664",
 ];
 const cors = corsLib({
   origin: (origin, callback) => {
@@ -116,7 +118,7 @@ export const getCityFromCoordinates = onRequest(googleApiOptions, async (request
 });
 
 // =================================================================
-// FUNÇÃO CALLABLE (STRIPE CHECKOUT - PIX, BOLETO, CARTÃO)
+// FUNÇÃO CALLABLE (STRIPE CHECKOUT)
 // =================================================================
 
 export const createStripeCheckout = onCall({
@@ -130,7 +132,7 @@ export const createStripeCheckout = onCall({
     throw new HttpsError("unauthenticated", "Você precisa estar logado.");
   }
   const userId = request.auth.uid;
-  const { priceId, co2ToOffset, costBRL } = request.data;
+  const { priceId, costBRL, co2ToOffset, payment_method_types } = request.data;
 
   if (!priceId) {
     throw new HttpsError("invalid-argument", "O 'priceId' não foi fornecido.");
@@ -138,7 +140,6 @@ export const createStripeCheckout = onCall({
 
   try {
     const appBaseUrl = "https://carbono-tracker-app.web.app";
-    
     const metadata = {
         firebaseUID: userId,
         priceId: priceId,
@@ -146,21 +147,33 @@ export const createStripeCheckout = onCall({
         ...(costBRL && { costBRL: costBRL.toString() }),
     };
 
+    let lineItems;
+
+    if (costBRL) {
+      const quantityInCents = Math.round(costBRL * 100);
+      lineItems = [{
+        price: priceId,
+        quantity: quantityInCents,
+      }];
+    } else {
+      lineItems = [{
+        price: priceId,
+        quantity: 1,
+      }];
+    }
+
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card", "pix", "boleto"],
+      payment_method_types: payment_method_types || ["card", "boleto"],
       mode: "payment",
       success_url: `${appBaseUrl}/payment-success`,
       cancel_url: `${appBaseUrl}/payment-cancel`,
-      line_items: [{
-        price: priceId,
-        quantity: 1
-      }],
+      line_items: lineItems,
       client_reference_id: userId,
       metadata: metadata,
-      expires_at: Math.floor(Date.now() / 1000) + (3600 * 24), // Expira em 1 dia
+      expires_at: Math.floor(Date.now() / 1000) + (3600 * 24),
     });
     return {
-      url: session.url
+      url: session.url,
     };
   } catch (error) {
     logger.error(`Erro ao criar a sessão de checkout para ${userId}:`, error);
@@ -173,8 +186,8 @@ export const createStripeCheckout = onCall({
 // =================================================================
 
 export const stripeWebhook = onRequest({
-  region: "southamerica-east1", // Executa na mesma região da função de checkout
-  secrets: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]
+  region: "southamerica-east1",
+  secrets: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
 }, async (request, response) => {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -202,13 +215,12 @@ export const stripeWebhook = onRequest({
     }
     
     try {
-        // ATENÇÃO: Substitua pelos IDs de Preço REAIS do seu painel Stripe
-        const COIN_PACKAGE_BRONZE_ID = 'price_1RlIsQ4Ie0XV5ATGB0X5KtaM';
-        const COIN_PACKAGE_SILVER_ID = 'price_1RlJGu4Ie0XV5ATGNDDcpsCJ';
-        const COIN_PACKAGE_GOLD_ID = 'price_1RlT1z4Ie0XV5ATGBRhI9ATa';
-        const CARBON_OFFSET_PRICE_ID = 'price_1P8g8Y4Ie0XV5ATGXRL1Vv8H';
+        const COIN_PACKAGE_BRONZE_ID = "price_..."; // Substitua pelo seu ID real
+        const COIN_PACKAGE_SILVER_ID = "price_..."; // Substitua pelo seu ID real
+        const COIN_PACKAGE_GOLD_ID = "price_...";   // Substitua pelo seu ID real
+        const CARBON_OFFSET_PRICE_ID = "price_1RnIIc4Ie0XV5ATGhfVx9F8R"; // <<< ATUALIZADO AQUI
 
-        const userWalletRef = db.collection('wallets').doc(userId);
+        const userWalletRef = db.collection("wallets").doc(userId);
 
         switch (priceId) {
             case COIN_PACKAGE_BRONZE_ID:
@@ -225,7 +237,7 @@ export const stripeWebhook = onRequest({
                 break;
             case CARBON_OFFSET_PRICE_ID:
                 const { co2ToOffset, costBRL } = session.metadata;
-                await db.collection('carbon_offsets').add({
+                await db.collection("carbon_offsets").add({
                     userId: userId,
                     offsetAmountKg: parseFloat(co2ToOffset),
                     costBRL: parseFloat(costBRL),
@@ -239,7 +251,7 @@ export const stripeWebhook = onRequest({
         }
         logger.info(`Lógica de negócio pós-pagamento executada com sucesso para o usuário: ${userId}`);
 
-    } catch(error) {
+    } catch (error) {
         logger.error(`Erro ao executar a lógica de negócio para a sessão ${session.id}:`, error);
         response.status(500).send("Erro interno ao processar o pagamento.");
         return;
@@ -247,7 +259,7 @@ export const stripeWebhook = onRequest({
   }
 
   response.status(200).send({
-    received: true
+    received: true,
   });
 });
 
@@ -271,7 +283,7 @@ export const cleanupDuplicateVehicleModels = onCall({
     return {
       deletedCount: 0,
       keptCount: 0,
-      message: "Coleção de modelos está vazia."
+      message: "Coleção de modelos está vazia.",
     };
   }
   const uniqueKeys = new Map();
@@ -289,7 +301,7 @@ export const cleanupDuplicateVehicleModels = onCall({
     return {
       deletedCount: 0,
       keptCount: uniqueKeys.size,
-      message: "Nenhuma duplicata encontrada."
+      message: "Nenhuma duplicata encontrada.",
     };
   }
   const batch = admin.firestore().batch();
@@ -300,7 +312,7 @@ export const cleanupDuplicateVehicleModels = onCall({
   return {
     deletedCount: docsToDelete.length,
     keptCount: uniqueKeys.size,
-    message
+    message,
   };
 });
 
@@ -312,11 +324,11 @@ export const grantAdminRole = onCall(async (request) => {
   try {
     const user = await admin.auth().getUserByEmail(userEmail);
     await admin.auth().setCustomUserClaims(user.uid, {
-      admin: true
+      admin: true,
     });
     logger.info(`Sucesso! Credencial de admin concedida para ${userEmail} (UID: ${user.uid})`);
     return {
-      message: `Sucesso! ${userEmail} agora é um administrador.`
+      message: `Sucesso! ${userEmail} agora é um administrador.`,
     };
   } catch (error) {
     logger.error(`Erro ao conceder credencial de admin para ${userEmail}:`, error);

@@ -1,4 +1,4 @@
-// lib/widgets/indicator_card.dart
+// lib/widgets/indicator_card.dart (COM CORES CORRIGIDAS)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 class IndicatorCard extends StatelessWidget {
   final String title;
-  final String value;
+  final Widget valueWidget;
   final IconData icon;
   final Color accentColor;
   final Widget? actionButton;
@@ -15,7 +15,7 @@ class IndicatorCard extends StatelessWidget {
   const IndicatorCard({
     super.key,
     required this.title,
-    required this.value,
+    required this.valueWidget,
     required this.icon,
     required this.accentColor,
     this.actionButton,
@@ -24,96 +24,68 @@ class IndicatorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isActionCard = title == 'CARTEIRA (R\$)';
-
+    // MUDANÇA: O Card agora tem um Container com gradiente para o fundo
     return Card(
-      color: accentColor,
+      color: Colors.transparent, // Cor do Card fica transparente
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-      // Adiciona uma elevação maior para o card de ação, destacando-o
-      elevation: isActionCard ? 8 : 4,
+      elevation: 4,
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: Colors.white.withAlpha((255 * 0.9).round()), size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: GoogleFonts.rajdhani(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            if (isLoading)
-              const Center(child: SpinKitFadingCircle(color: Colors.white, size: 30))
-            else if (isActionCard)
-              // Layout de AÇÃO para o card "Comprar Moedas"
+      child: Container(
+        decoration: BoxDecoration(
+          // O gradiente usa a accentColor para o preenchimento
+          gradient: LinearGradient(
+            colors: [
+              accentColor.withOpacity(0.4),
+              accentColor.withOpacity(0.1),
+              Colors.grey[900]!.withOpacity(0.3)
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: accentColor.withOpacity(0.8), width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  Icon(icon, color: accentColor, size: 22),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      value, // "Comprar Moedas"
+                      title,
                       style: GoogleFonts.rajdhani(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900, // Extra negrito para destaque máximo
+                        color: accentColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const Icon(
-                    Icons.arrow_forward_ios, // Ícone de navegação
-                    color: Colors.white,
-                    size: 18,
-                  )
                 ],
-              )
-            else
-              // Layout de DADOS para os outros indicadores
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  value,
-                  style: GoogleFonts.orbitron(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    shadows: [
-                      const Shadow(
-                        blurRadius: 4.0,
-                        color: Color.fromARGB(128, 0, 0, 0),
-                        offset: Offset(1.0, 1.0),
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
+              ),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: isLoading
+                      ? const Center(child: SpinKitFadingCircle(color: Colors.white, size: 30))
+                      : valueWidget,
                 ),
               ),
-            if (actionButton != null) ...[
-              const SizedBox(height: 4),
-              Align(
-                alignment: Alignment.bottomRight,
-                child: actionButton!,
-              )
-            ] else
-              const Spacer(),
-          ],
+              if (actionButton != null) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.center,
+                  child: actionButton!,
+                )
+              ],
+            ],
+          ),
         ),
       ),
     );

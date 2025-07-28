@@ -1,9 +1,10 @@
-// lib/screens/signup/company_data_screen.dart (CORRIGIDO)
+// lib/screens/signup/company_data_screen.dart
+
 import 'package:carbon/services/wallet_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_fonts/google_fonts.dart'; // <<< CORREÇÃO APLICADA AQUI
+import 'package:google_fonts/google_fonts.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -225,7 +226,7 @@ class _CompanyDataScreenState extends State<CompanyDataScreen> {
         try {
           await createdUser.delete();
         } catch (e) {
-          // Falha ao reverter, pode precisar de ação manual no console
+          debugPrint("Falha ao reverter usuário de autenticação: $e");
         }
       }
     } finally {

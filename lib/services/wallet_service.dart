@@ -1,4 +1,5 @@
-// lib/services/wallet_service.dart (VERSÃO COMPLETA COM DEPURACÃO AVANÇADA)
+// lib/services/wallet_service.dart (CORRIGIDO)
+
 import 'package:carbon/models/product_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -6,112 +7,146 @@ import 'package:flutter/foundation.dart';
 
 class WalletService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
 
+  /// Inicializa a carteira para um novo usuário com saldo zerado.
   Future<void> initializeWallet(String userId) async {
-    if (userId.isEmpty) {
-      debugPrint("[WalletService] Erro: User ID vazio.");
-      return;
-    }
     final walletRef = _db.collection('wallets').doc(userId);
-    await walletRef.set({'balance': 0.0, 'userId': userId}, SetOptions(merge: true));
+    await walletRef.set({
+      'balance': 0.0,
+      'userId': userId,
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
-  Future<void> addCreditsToWallet(String userId, double amountToAdd) async {
-    if (userId.isEmpty || amountToAdd <= 0) return;
-    
-    final walletRef = _db.collection('wallets').doc(userId);
-    await walletRef.update({'balance': FieldValue.increment(amountToAdd)});
-  }
-
+  /// Retorna um Stream com o saldo da carteira do usuário em tempo real.
   Stream<double> getWalletBalanceStream(String userId) {
-    if (userId.isEmpty) return Stream.value(0.0);
     return _db.collection('wallets').doc(userId).snapshots().map((snapshot) {
-      if (snapshot.exists) {
-        return (snapshot.data()?['balance'] as num?)?.toDouble() ?? 0.0;
+      if (snapshot.exists && snapshot.data()!.containsKey('balance')) {
+        return (snapshot.data()!['balance'] as num).toDouble();
       }
+      return 0.0;
+    }).handleError((error) {
+      debugPrint("Erro ao ouvir saldo da carteira: $error");
       return 0.0;
     });
   }
 
-  // ▼▼▼ MÉTODO ATUALIZADO COM LOGS INTERNOS NA TRANSAÇÃO ▼▼▼
-  Future<String> executePurchase({required String userId, required Product product}) async {
+  /// Adiciona créditos (B2Y Coins) à carteira de um usuário.
+  Future<void> addCreditsToWallet(String userId, double creditsToAdd) async {
+    if (creditsToAdd <= 0) return;
     final walletRef = _db.collection('wallets').doc(userId);
-    final userTransactionsRef = _db.collection('users').doc(userId).collection('transactions');
+
+    // MUDANÇA: Salva a transação na subcoleção correta, dentro do documento do usuário.
+    final transactionPromise = _db.collection('users').doc(userId).collection('transactions').add({
+      'userId': userId, // Redundante mas pode ajudar em queries futuras
+      'amount': creditsToAdd,
+      'type': 'credit_earned',
+      'description': 'Créditos por viagem sustentável',
+      'createdAt': FieldValue.serverTimestamp(), // <<< CORRIGIDO de 'timestamp' para 'createdAt'
+    });
+
+    // Atualiza o saldo do usuário
+    await walletRef.set(
+      {'balance': FieldValue.increment(creditsToAdd)},
+      SetOptions(merge: true),
+    );
+    
+    // Garante que a transação foi registrada
+    await transactionPromise;
+  }
+
+  /// Tenta compensar uma quantidade de CO₂ usando o saldo de B2Y Coins do usuário.
+  Future<bool> compensateWithCoins({
+    required String userId,
+    required double co2ToOffset,
+    String? tripId,
+  }) async {
+    final double coinsNeeded = co2ToOffset;
+    if (coinsNeeded <= 0) return false;
+    final walletRef = _db.collection('wallets').doc(userId);
 
     try {
-      debugPrint("[executePurchase] Iniciando transação para o usuário: $userId");
       await _db.runTransaction((transaction) async {
-        debugPrint("[executePurchase] Passo 1: Lendo o documento da carteira...");
         final walletSnapshot = await transaction.get(walletRef);
-        debugPrint("[executePurchase] Passo 2: Documento da carteira lido. Existe? ${walletSnapshot.exists}");
 
         if (!walletSnapshot.exists) {
-          throw Exception("Sua carteira digital não foi encontrada.");
+          throw Exception('Carteira do usuário não encontrada.');
+        }
+        final currentBalance = (walletSnapshot.data()!['balance'] as num?)?.toDouble() ?? 0.0;
+        if (currentBalance < coinsNeeded) {
+          throw Exception('Saldo de B2Y Coins insuficiente.');
         }
 
-        debugPrint("[executePurchase] Passo 3: Lendo os dados da carteira... Dados: ${walletSnapshot.data()}");
-        final walletData = walletSnapshot.data();
-        if (walletData == null || walletData['balance'] == null) {
-            throw Exception("O campo 'balance' não foi encontrado na carteira.");
-        }
-        
-        final currentBalance = (walletData['balance'] as num).toDouble();
-        debugPrint("[executePurchase] Passo 4: Saldo atual lido com sucesso: $currentBalance");
-        
-        if (currentBalance < product.priceCoins) {
-          throw Exception("Saldo de moedas insuficiente.");
-        }
-
-        final newBalance = currentBalance - product.priceCoins;
-        debugPrint("[executePurchase] Passo 5: Novo saldo calculado: $newBalance. Atualizando documento...");
+        final newBalance = currentBalance - coinsNeeded;
         transaction.update(walletRef, {'balance': newBalance});
-        debugPrint("[executePurchase] Passo 6: Documento da carteira atualizado. Criando registro de transação...");
 
-        final transactionDoc = userTransactionsRef.doc();
-        transaction.set(transactionDoc, {
-          'id': transactionDoc.id,
-          'amount': -product.priceCoins.toDouble(),
-          'type': 'purchase',
-          'description': 'Compra de ${product.name}',
-          'relatedId': product.id,
+        final offsetRef = _db.collection('carbon_offsets').doc();
+        transaction.set(offsetRef, {
+          'userId': userId, 'offsetAmountKg': co2ToOffset, 'coinsUsed': coinsNeeded,
+          'method': 'b2y_coins', 'tripId': tripId, 'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        // MUDANÇA: Cria a referência da transação na subcoleção correta.
+        final transactionRef = _db.collection('users').doc(userId).collection('transactions').doc();
+        transaction.set(transactionRef, {
+          'userId': userId, 'amount': -coinsNeeded, 'type': 'carbon_offset',
+          'description': 'Compensação de ${co2ToOffset.toStringAsFixed(2)} kg de CO₂',
           'createdAt': FieldValue.serverTimestamp(),
         });
-        debugPrint("[executePurchase] Passo 7: Registro de transação criado. Finalizando.");
       });
-      debugPrint("[executePurchase] Transação concluída com sucesso.");
-      return "success";
-    } on FirebaseException catch (e) {
-      debugPrint("ERRO DETALHADO DA TRANSAÇÃO NO FIREBASE: CÓDIGO: [${e.code}] MENSAGEM: ${e.message}");
-      return "Erro do servidor: ${e.message}";
+      debugPrint("Compensação com B2Y Coins bem-sucedida para o usuário $userId");
+      return true;
     } catch (e) {
-      debugPrint("ERRO DETALHADO DA TRANSAÇÃO (GENÉRICO): $e");
+      debugPrint("Erro ao compensar com B2Y Coins: $e");
+      return false;
+    }
+  }
+
+  /// Executa la compra de um produto usando B2Y Coins.
+  Future<String> executePurchase({required String userId, required Product product}) async {
+    final walletRef = _db.collection('wallets').doc(userId);
+    final double coinsNeeded = product.priceCoins.toDouble();
+
+    try {
+      await _db.runTransaction((transaction) async {
+        final walletSnapshot = await transaction.get(walletRef);
+        if (!walletSnapshot.exists) throw Exception('Carteira não encontrada.');
+        
+        final currentBalance = (walletSnapshot.data()?['balance'] as num?)?.toDouble() ?? 0.0;
+        if (currentBalance < coinsNeeded) throw Exception('Saldo de B2Y Coins insuficiente.');
+        
+        transaction.update(walletRef, {'balance': currentBalance - coinsNeeded});
+
+        final purchaseRef = _db.collection('purchases').doc();
+        transaction.set(purchaseRef, {
+          'userId': userId, 'productId': product.id, 'productName': product.name,
+          'coinsSpent': coinsNeeded, 'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        // MUDANÇA: Cria a referência da transação na subcoleção correta.
+        final transactionRef = _db.collection('users').doc(userId).collection('transactions').doc();
+        transaction.set(transactionRef, {
+          'userId': userId, 'amount': -coinsNeeded, 'type': 'marketplace_purchase',
+          'description': 'Compra de "${product.name}"', 'createdAt': FieldValue.serverTimestamp(),
+        });
+      });
+      return "success";
+    } catch (e) {
+      debugPrint("Erro ao executar compra com moedas: $e");
       return e.toString();
     }
   }
 
-  /// Inicia uma sessão de checkout do Stripe para um determinado produto.
+  /// Chama uma Cloud Function para criar uma sessão de checkout do Stripe.
   Future<String> purchaseProductWithStripe({required String priceId}) async {
-    try {
-      final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-      final callable = functions.httpsCallable('createStripeCheckout');
-
-      final HttpsCallableResult result = await callable.call<Map<String, dynamic>>({
-        'priceId': priceId,
-      });
-
-      final url = result.data?['url'];
-      if (url != null) {
-        return url;
-      } else {
-        throw Exception("A URL de checkout não foi retornada pelo servidor.");
-      }
-
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint("Erro do Firebase Functions ao comprar com Stripe: [${e.code}] ${e.message}");
-      throw Exception("Falha ao iniciar o pagamento. Por favor, tente novamente.");
-    } catch (e) {
-      debugPrint("Erro genérico ao chamar o Stripe: $e");
-      throw Exception("Ocorreu um erro inesperado ao processar seu pagamento.");
+    final callable = _functions.httpsCallable('createStripeProductCheckout');
+    final result = await callable.call<Map<String, dynamic>>({'priceId': priceId});
+    
+    if (result.data['url'] != null) {
+      return result.data['url'];
+    } else {
+      throw Exception(result.data['error'] ?? 'Não foi possível obter a URL de pagamento.');
     }
   }
 }

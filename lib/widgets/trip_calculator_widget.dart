@@ -30,13 +30,14 @@ class _TripCalculatorWidgetState extends State<TripCalculatorWidget> {
   final CarbonService _carbonService = CarbonService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
 
-  final String _googleApiKey = "AIzaSyDy_WBvHCk13hGIfqEP_VPEDu436PvMF0E";
+  // ATENÇÃO: Substitua pela sua chave de API do Google Cloud Platform
+  final String _googleApiKey = "SUA_CHAVE_API_AQUI";
 
   // Cores Consistentes
   static const Color primaryColor = Color(0xFF00BFFF);
   static const Color secondaryColor = Color(0xFF00FFFF);
   static final Color errorColor = Colors.redAccent[100]!;
-  static final Color inputFillColor = Colors.white.withAlpha(13); // 0.05
+  static final Color inputFillColor = Colors.white.withAlpha(13);
   static final Color inputBorderColor = Colors.grey[700]!;
   static final Color labelColor = Colors.grey[400]!;
   static const Color textColor = Colors.white;
@@ -57,6 +58,21 @@ class _TripCalculatorWidgetState extends State<TripCalculatorWidget> {
     _originController.dispose();
     _destinationController.dispose();
     super.dispose();
+  }
+
+  TextStyle _getValueTextStyle() {
+    return GoogleFonts.orbitron(
+      color: Colors.white,
+      fontSize: 20,
+      fontWeight: FontWeight.bold,
+      shadows: [
+        const Shadow(
+          blurRadius: 4.0,
+          color: Color.fromARGB(128, 0, 0, 0),
+          offset: Offset(1.0, 1.0),
+        ),
+      ],
+    );
   }
 
   Future<void> _fetchUserVehicles(String userId) async {
@@ -193,8 +209,6 @@ class _TripCalculatorWidgetState extends State<TripCalculatorWidget> {
     }
 
     try {
-      // ======================= CORREÇÃO PRINCIPAL AQUI =======================
-      // 1. Recebe o objeto TripCalculationResult
       final TripCalculationResult impactResults = await _carbonService.getTripCalculationResults(
         distanceKm: distanceKm,
         vehicleType: vehicleType,
@@ -202,7 +216,6 @@ class _TripCalculatorWidgetState extends State<TripCalculatorWidget> {
 
       if (mounted) {
         setState(() {
-          // 2. Popula o mapa _results usando as propriedades do objeto
           _results = {
             'distance': distanceKm,
             'co2SavedKg': impactResults.co2SavedKg,
@@ -303,7 +316,7 @@ class _TripCalculatorWidgetState extends State<TripCalculatorWidget> {
       elevation: 4,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: Colors.grey[900]?.withAlpha(128), // Correção de Opacidade
+      color: Colors.grey[900]?.withAlpha(128),
       child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Form(
@@ -405,28 +418,40 @@ class _TripCalculatorWidgetState extends State<TripCalculatorWidget> {
                               IndicatorCard(
                                 isLoading: _isCalculating,
                                 title: 'DISTÂNCIA REAL',
-                                value: '${_results!['distance']?.toStringAsFixed(1) ?? 'N/A'} km',
+                                valueWidget: Text(
+                                  '${_results!['distance']?.toStringAsFixed(1) ?? 'N/A'} km',
+                                  style: _getValueTextStyle(),
+                                ),
                                 icon: Icons.social_distance_outlined,
                                 accentColor: kmColor,
                               ),
                               IndicatorCard(
                                 isLoading: _isCalculating,
                                 title: _results!['isEmission'] ? 'EMISSÃO CO₂' : 'CO₂ EVITADO',
-                                value: '${(_results!['isEmission'] ? _results!['co2EmittedKg'] : _results!['co2SavedKg'])?.toStringAsFixed(2) ?? 'N/A'} kg',
+                                valueWidget: Text(
+                                  '${(_results!['isEmission'] ? _results!['co2EmittedKg'] : _results!['co2SavedKg'])?.toStringAsFixed(2) ?? 'N/A'} kg',
+                                  style: _getValueTextStyle(),
+                                ),
                                 icon: _results!['isEmission'] ? Icons.cloud_upload_outlined : Icons.shield_moon_outlined,
                                 accentColor: _results!['isEmission'] ? valueColorNegative : co2Color,
                               ),
                               IndicatorCard(
                                 isLoading: _isCalculating,
                                 title: 'CRÉDITOS GERADOS',
-                                value: '${_results!['creditsEarned']?.toStringAsFixed(4) ?? 'N/A'}',
+                                valueWidget: Text(
+                                  '${_results!['creditsEarned']?.toStringAsFixed(4) ?? 'N/A'}',
+                                  style: _getValueTextStyle(),
+                                ),
                                 icon: Icons.paid_outlined,
                                 accentColor: creditsColor,
                               ),
                               IndicatorCard(
                                 isLoading: _isCalculating,
                                 title: 'CUSTO P/ COMPENSAR',
-                                value: 'R\$ ${_results!['compensationCostBRL']?.toStringAsFixed(2) ?? 'N/A'}',
+                                valueWidget: Text(
+                                  'R\$ ${_results!['compensationCostBRL']?.toStringAsFixed(2) ?? 'N/A'}',
+                                  style: _getValueTextStyle(),
+                                ),
                                 icon: Icons.attach_money_outlined,
                                 accentColor: (_results!['compensationCostBRL'] ?? 0) > 0 ? valueColorNegative : valueColorPositive,
                               ),

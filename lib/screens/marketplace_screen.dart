@@ -1,4 +1,4 @@
-// lib/screens/marketplace_screen.dart (VERSÃO COM CORREÇÃO DO LOADING)
+// lib/screens/marketplace_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,7 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:carbon/models/product_model.dart';
 import 'package:carbon/services/wallet_service.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:intl/intl.dart'; // <<< NOVO: Para formatação de números
+import 'package:intl/intl.dart';
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -23,8 +23,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   final String? userId = FirebaseAuth.instance.currentUser?.uid;
   bool _isProcessingPurchase = false;
 
-  // Formatter para exibir os números no padrão brasileiro
-  final NumberFormat _coinFormatter = NumberFormat("#,##0", "pt_BR");
+  final NumberFormat _coinFormatter = NumberFormat("#,##0.00", "pt_BR");
 
   static const Color primaryColor = Color(0xFF00BFFF);
   static const Color textColor = Colors.white;
@@ -97,12 +96,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   const SizedBox(height: 16),
                   Text(product.name, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text(product.description, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: textColor.withOpacity(0.7), fontSize: 14)),
+                  Text(product.description, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: textColor.withAlpha((255 * 0.7).round()), fontSize: 14)),
                   const SizedBox(height: 20),
                   Chip(
-                    backgroundColor: Colors.amber.withOpacity(0.1),
+                    backgroundColor: Colors.amber.withAlpha((255 * 0.1).round()),
                     avatar: const Icon(Icons.toll_outlined, color: Colors.amberAccent),
-                    // <<< ALTERADO: usa o formatter para exibir o preço
                     label: Text('Custo: ${_coinFormatter.format(product.priceCoins)} B2Y Coins', style: GoogleFonts.orbitron(color: Colors.amberAccent, fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ],
@@ -123,21 +121,20 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                             
                             final result = await _walletService.executePurchase(userId: userId!, product: product);
                             
-                            // <<< ADICIONADO: Garante que o loading pare
                             setDialogState(() => _isProcessingPurchase = false);
-
-                            if (mounted) {
-                              Navigator.of(ctx).pop();
-                              if (result == "success") {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('"${product.name}" resgatado com sucesso!'), backgroundColor: successColor, behavior: SnackBarBehavior.floating),
-                                );
-                              } else {
-                                final errorMessage = result.replaceFirst("Exception: ", "");
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Falha na compra: $errorMessage'), backgroundColor: errorColor, behavior: SnackBarBehavior.floating),
-                                );
-                              }
+                            
+                            if (!mounted) return;
+                            
+                            Navigator.of(ctx).pop();
+                            if (result == "success") {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('"${product.name}" resgatado com sucesso!'), backgroundColor: successColor, behavior: SnackBarBehavior.floating),
+                              );
+                            } else {
+                              final errorMessage = result.replaceFirst("Exception: ", "");
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Falha na compra: $errorMessage'), backgroundColor: errorColor, behavior: SnackBarBehavior.floating),
+                              );
                             }
                           },
                           style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.black),
@@ -174,7 +171,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   final balance = snapshot.data ?? 0.0;
                   return Chip(
                     avatar: const Icon(Icons.toll_outlined, color: Colors.amberAccent, size: 18),
-                    // <<< ALTERADO: usa o formatter para exibir o saldo
                     label: Text(_coinFormatter.format(balance), style: const TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                     backgroundColor: Colors.black38,
                   );
@@ -209,7 +205,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
               final product = products[index];
               return _ProductCard(
                 product: product, 
-                formatter: _coinFormatter, // <<< NOVO: Passa o formatter para o card
+                formatter: _coinFormatter,
                 onTap: () => _handlePurchase(product)
               );
             },
@@ -223,7 +219,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 class _ProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
-  final NumberFormat formatter; // <<< NOVO: Recebe o formatter
+  final NumberFormat formatter;
   const _ProductCard({required this.product, required this.onTap, required this.formatter});
 
   @override
@@ -287,7 +283,6 @@ class _ProductCard extends StatelessWidget {
                           const Icon(Icons.toll_outlined, color: Colors.amberAccent, size: 16),
                           const SizedBox(width: 4),
                           Text(
-                            // <<< ALTERADO: usa o formatter para exibir o preço
                             formatter.format(product.priceCoins),
                             style: GoogleFonts.orbitron(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 15),
                           ),

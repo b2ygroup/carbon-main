@@ -1,8 +1,10 @@
-// lib/screens/onboarding_screen.dart (COMPLETO E APRIMORADO)
+// lib/screens/onboarding_screen.dart
+import 'package:carbon/screens/auth_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:carbon/screens/signup/account_type_screen.dart'; 
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -14,32 +16,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  // ▼▼▼ CONTEÚDO REFINADO PARA CONTAR A NOVA HISTÓRIA ▼▼▼
   final List<Map<String, dynamic>> _pages = [
-    {
-      'icon': Icons.public,
-      'title': 'Sua Direção Transforma o Planeta',
-      'description': 'Seja evitando emissões com seu elétrico ou compensando com seu carro a combustão, cada viagem se torna uma ação positiva.',
-      'color': Colors.cyan[300]!,
-    },
-    {
-      'icon': Icons.monetization_on_outlined,
-      'title': 'Seu Elétrico Gera Dinheiro Real',
-      'description': 'Dirija seu carro elétrico, evite emissões de CO₂ e veja seu impacto se transformar em B2Y Coins, nossa moeda digital com valor real.',
-      'color': Colors.greenAccent[400]!,
-    },
-    {
-      'icon': Icons.forest_outlined,
-      'title': 'Seu Carro a Combustão Regenera',
-      'description': 'Monitore suas emissões e compense sua pegada. Cada contribuição é destinada ao plantio de árvores e projetos ambientais parceiros.',
-      'color': Colors.amberAccent[400]!,
-    },
-    {
-      'icon': Icons.rocket_launch_outlined,
-      'title': 'Qual Herói é Você?',
-      'description': 'Cadastre-se para começar a ganhar B2Y Coins ou a regenerar o planeta. Sua jornada começa agora!',
-      'color': Colors.purpleAccent[200]!,
-    }
+    {'icon': Icons.public, 'title': 'Sua Direção Transforma o Planeta', 'description': 'Seja evitando emissões com seu elétrico ou compensando com seu carro a combustão, cada viagem se torna uma ação positiva.', 'color': Colors.cyan[300]!,},
+    {'icon': Icons.monetization_on_outlined, 'title': 'Seu Elétrico Gera Dinheiro Real', 'description': 'Dirija seu carro elétrico, evite emissões de CO₂ e veja seu impacto se transformar em B2Y Coins, nossa moeda digital com valor real.', 'color': Colors.greenAccent[400]!,},
+    {'icon': Icons.forest_outlined, 'title': 'Seu Carro a Combustão Regenera', 'description': 'Monitore suas emissões e compense sua pegada. Cada contribuição é destinada ao plantio de árvores e projetos ambientais parceiros.', 'color': Colors.amberAccent[400]!,},
+    {'icon': Icons.rocket_launch_outlined, 'title': 'Pronto para Começar?', 'description': 'Crie sua conta para começar a ganhar B2Y Coins ou faça login se você já faz parte da nossa comunidade sustentável.', 'color': Colors.purpleAccent[200]!,}
   ];
 
   @override
@@ -54,12 +35,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
   }
 
-  void _navigateToAccountTypeScreen() {
-    // Adicionar lógica para salvar que o onboarding foi concluído
-    // Ex: final prefs = await SharedPreferences.getInstance(); await prefs.setBool('seenOnboarding', true);
-    Navigator.of(context).pushReplacement(MaterialPageRoute(
-      builder: (_) => const AccountTypeScreen(),
-    ));
+  Future<void> _markOnboardingAsSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('seenOnboarding', true);
+  }
+
+  Future<void> _navigateToRegister() async {
+    await _markOnboardingAsSeen();
+    if (mounted) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => const AccountTypeScreen(),
+      ));
+    }
+  }
+
+  Future<void> _navigateToLogin() async {
+    await _markOnboardingAsSeen();
+    if (mounted) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => const AuthScreen(),
+      ));
+    }
   }
 
   @override
@@ -67,6 +63,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     const Color titleColor = Colors.white;
     final Color descriptionColor = Colors.white.withOpacity(0.85);
     final Color skipButtonColor = Colors.white.withOpacity(0.7);
+    final bool isLastPage = _currentPage == _pages.length - 1;
 
     return Scaffold(
       body: Container(
@@ -85,11 +82,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 itemCount: _pages.length,
                 onPageChanged: _onPageChanged,
                 itemBuilder: (context, index) {
-                  return OnboardingPageContent(
-                    data: _pages[index],
-                    titleColor: titleColor,
-                    descriptionColor: descriptionColor,
-                  );
+                  return OnboardingPageContent(data: _pages[index], titleColor: titleColor, descriptionColor: descriptionColor,);
                 },
               ),
             ),
@@ -99,17 +92,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Botão Pular (some na última página)
                   AnimatedOpacity(
-                    opacity: _currentPage != _pages.length - 1 ? 1.0 : 0.0,
+                    opacity: !isLastPage ? 1.0 : 0.0,
                     duration: 200.ms,
                     child: TextButton(
-                      onPressed: _currentPage != _pages.length - 1 ? _navigateToAccountTypeScreen : null,
+                      onPressed: !isLastPage ? _navigateToLogin : null,
                       child: Text('Pular', style: TextStyle(color: skipButtonColor, fontSize: 16)),
                     ),
                   ),
                   
-                  // Indicadores de página
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(_pages.length, (index) => AnimatedContainer(
@@ -124,26 +115,44 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     )),
                   ),
 
-                  // Botão de Ação (Próximo / Começar)
-                  ElevatedButton(
-                    onPressed: () {
-                      if (_currentPage == _pages.length - 1) {
-                        _navigateToAccountTypeScreen();
-                      } else {
-                        _pageController.nextPage(duration: 400.ms, curve: Curves.easeInOut);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _pages[_currentPage]['color'] as Color,
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    ),
-                    child: Text(
-                      _currentPage == _pages.length - 1 ? 'Começar' : 'Próximo',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16),
-                    ),
-                  ).animate().scale(delay: 100.ms),
+                  AnimatedSwitcher(
+                    duration: 300.ms,
+                    transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+                    child: isLastPage
+                      ? Column(
+                          key: const ValueKey('finalActions'),
+                          children: [
+                            ElevatedButton(
+                              onPressed: _navigateToRegister,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _pages[_currentPage]['color'] as Color,
+                                foregroundColor: Colors.black,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                              ),
+                              child: Text('Criar Conta', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16),),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _navigateToLogin, 
+                              child: const Text('Fazer Login', style: TextStyle(color: Colors.white70))
+                            ),
+                          ],
+                        )
+                      : ElevatedButton(
+                          key: const ValueKey('nextButton'),
+                          onPressed: () {
+                             _pageController.nextPage(duration: 400.ms, curve: Curves.easeInOut);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _pages[_currentPage]['color'] as Color,
+                            foregroundColor: Colors.black,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          ),
+                          child: Text('Próximo', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16),),
+                        ).animate().scale(delay: 100.ms),
+                  ),
                 ],
               ),
             ),
@@ -159,12 +168,7 @@ class OnboardingPageContent extends StatelessWidget {
   final Color titleColor;
   final Color descriptionColor;
 
-  const OnboardingPageContent({
-    super.key,
-    required this.data,
-    required this.titleColor,
-    required this.descriptionColor,
-  });
+  const OnboardingPageContent({super.key, required this.data, required this.titleColor, required this.descriptionColor,});
 
   @override
   Widget build(BuildContext context) {
@@ -191,31 +195,11 @@ class OnboardingPageContent extends StatelessWidget {
           
           const SizedBox(height: 50.0),
           
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.orbitron(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: titleColor,
-              shadows: [
-                Shadow(color: highlightColor.withOpacity(0.5), blurRadius: 10)
-              ]
-            )
-          ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.5, duration: 600.ms, curve: Curves.easeOutCubic),
+          Text(title, textAlign: TextAlign.center, style: GoogleFonts.orbitron(fontSize: 26, fontWeight: FontWeight.bold, color: titleColor, shadows: [Shadow(color: highlightColor.withOpacity(0.5), blurRadius: 10)])).animate().fadeIn(delay: 200.ms).slideY(begin: 0.5, duration: 600.ms, curve: Curves.easeOutCubic),
           
           const SizedBox(height: 20.0),
           
-          Text(
-            description,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
-              fontSize: 17,
-              color: descriptionColor,
-              height: 1.5,
-              fontWeight: FontWeight.w400,
-            )
-          ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.5, duration: 600.ms, curve: Curves.easeOutCubic),
+          Text(description, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 17, color: descriptionColor, height: 1.5, fontWeight: FontWeight.w400,)).animate().fadeIn(delay: 400.ms).slideY(begin: 0.5, duration: 600.ms, curve: Curves.easeOutCubic),
         ],
       ),
     );

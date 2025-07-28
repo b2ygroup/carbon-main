@@ -1,4 +1,5 @@
-// lib/screens/signup/personal_data_screen.dart (COM LOGS DE DIAGNÓSTICO)
+// lib/screens/signup/personal_data_screen.dart
+
 import 'package:carbon/services/wallet_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -165,7 +166,6 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
     return null;
   }
 
-  // ▼▼▼ FUNÇÃO MODIFICADA COM LOGS ▼▼▼
   Future<void> _submitSignupForm() async {
     final isValid = _formKey.currentState?.validate() ?? false;
     FocusScope.of(context).unfocus();
@@ -182,19 +182,15 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
     User? createdUser;
 
     try {
-      // ETAPA DE AUTENTICAÇÃO
-      print("--> ETAPA AUTH: Tentando criar usuário no Firebase Authentication...");
       UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(), password: _passwordController.text,
       );
       createdUser = userCredential.user;
-      print("--> SUCESSO na ETAPA AUTH: Usuário criado com UID: ${createdUser?.uid}");
 
       if (createdUser == null) throw Exception('Falha ao obter detalhes do novo usuário após criação.');
       
       final userId = createdUser.uid;
       
-      // PREPARAÇÃO DOS DADOS
       String? dobString;
       if (_selectedDate != null) {
         dobString = DateFormat('yyyy-MM-dd').format(_selectedDate!);
@@ -221,19 +217,11 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
         }
       };
 
-      // ETAPA 1: SALVAR DADOS DO USUÁRIO
-      print("--> ETAPA 1 (Firestore): Tentando escrever na coleção 'users' para o UID: $userId");
       await FirebaseFirestore.instance.collection('users').doc(userId).set(userData);
-      print("--> SUCESSO na ETAPA 1 (Firestore): Documento do usuário criado.");
       
-      // ETAPA 2: INICIALIZAR CARTEIRA
-      print("--> ETAPA 2 (Firestore): Tentando inicializar a carteira via WalletService para o UID: $userId");
       await WalletService().initializeWallet(userId);
-      print("--> SUCESSO na ETAPA 2 (Firestore): Carteira inicializada.");
       
-      // ETAPA 3: NAVEGAÇÃO
       if (mounted) {
-        print("--> ETAPA 3 (Navegação): Sucesso total, navegando para a próxima tela.");
         ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('Conta para ${_nameController.text.trim()} criada!'), backgroundColor: Colors.green));
         
         Navigator.of(context).pushReplacement(
@@ -243,7 +231,6 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
         );
       }
     } on FirebaseAuthException catch (e) {
-      print("!!! FALHA na ETAPA AUTH: Código: ${e.code}, Mensagem: ${e.message}");
       String errorMessage = 'Ocorreu um erro ao criar a conta.';
       if (e.code == 'weak-password') {
         errorMessage = 'A senha fornecida é muito fraca.';
@@ -255,23 +242,16 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage), backgroundColor: errorColor));
     
     } on FirebaseException catch (e) {
-      // Este bloco captura erros do Firestore, como 'permission-denied'
-      print("!!! FALHA DE FIREBASE (Firestore): Código: ${e.code}, Mensagem: ${e.message}");
       if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro de banco de dados: ${e.message}'), backgroundColor: errorColor));
       }
       if (createdUser != null) {
-        print("...Iniciando rollback do usuário ${createdUser.uid}...");
         await createdUser.delete();
-        print("...Rollback concluído.");
       }
     } catch (e) {
-      print("!!! FALHA GENÉRICA: $e");
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro desconhecido ao criar conta: $e'), backgroundColor: errorColor));
       if (createdUser != null) {
-        print("...Iniciando rollback do usuário ${createdUser.uid}...");
         await createdUser.delete();
-        print("...Rollback concluído.");
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

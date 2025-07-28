@@ -1,44 +1,195 @@
-// lib/screens/dashboard_screen.dart
+// lib/screens/dashboard_screen.dart (VERSÃO REATORADA E CORRIGIDA)
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+
+import 'package:carbon/config/app_config.dart';
+import 'package:carbon/models/vehicle_type_enum.dart';
+import 'package:carbon/providers/trip_provider.dart';
+import 'package:carbon/providers/user_provider.dart';
+import 'package:carbon/providers/wallet_provider.dart';
+import 'package:carbon/screens/admin_screen.dart';
+import 'package:carbon/screens/badges_screen.dart';
 import 'package:carbon/screens/buy_coins_screen.dart';
+import 'package:carbon/screens/fleet_management_screen.dart';
 import 'package:carbon/screens/marketplace_screen.dart';
 import 'package:carbon/screens/premium_screen.dart';
-import 'package:carbon/screens/sell_coins_screen.dart'; 
-import 'package:carbon/services/wallet_service.dart';
+import 'package:carbon/screens/registration_screen.dart';
+import 'package:carbon/screens/reports_screen.dart';
 import 'package:carbon/screens/trade_b2y_screen.dart';
-import 'package:carbon/widgets/manual_pix_dialog.dart';
+import 'package:carbon/screens/transaction_history_screen.dart';
+import 'package:carbon/screens/trip_history_screen.dart';
+import 'package:carbon/services/carbon_service.dart';
+import 'package:carbon/services/wallet_service.dart';
+import 'package:carbon/widgets/ad_banner_placeholder.dart';
+import 'package:carbon/widgets/indicator_card.dart';
+import 'package:carbon/widgets/minimap_placeholder.dart';
+import 'package:carbon/widgets/trip_chart_placeholder.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:provider/provider.dart';
-import 'package:percent_indicator/percent_indicator.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:percent_indicator/percent_indicator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:carbon/screens/global_dashboard_screen.dart';
 
-import 'package:carbon/providers/user_provider.dart';
-import 'package:carbon/screens/registration_screen.dart';
-import 'package:carbon/models/vehicle_type_enum.dart';
-import 'package:carbon/services/carbon_service.dart';
-import 'package:carbon/screens/fleet_management_screen.dart';
-import 'package:carbon/screens/trip_history_screen.dart';
-import 'package:carbon/widgets/indicator_card.dart';
-import 'package:carbon/widgets/trip_chart_placeholder.dart';
-import 'package:carbon/widgets/ad_banner_placeholder.dart';
-import 'package:carbon/widgets/minimap_placeholder.dart';
-import 'package:carbon/screens/transaction_history_screen.dart';
-import 'package:carbon/screens/admin_screen.dart';
+// MUDANÇA: O widget da carteira agora consome os dados dos Providers globais
+class DigitalWalletCard extends StatelessWidget {
+  const DigitalWalletCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Ouve as mudanças no UserProvider e no WalletProvider
+    final userProvider = context.watch<UserProvider>();
+    final walletProvider = context.watch<WalletProvider>();
+
+    final userName = userProvider.userName ?? 'Usuário';
+    final balance = walletProvider.balance;
+    final isLoading = walletProvider.isLoading;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 15.0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16.0),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2D2F41), Color(0xFF1E1C27)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'B2Y WALLET',
+                style: GoogleFonts.orbitron(
+                  color: Colors.white.withOpacity(0.7),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              Icon(Icons.memory, color: Colors.cyanAccent.withOpacity(0.8), size: 30),
+            ],
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'SALDO DISPONÍVEL',
+                style: GoogleFonts.rajdhani(
+                  color: Colors.white.withOpacity(0.5),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              if (isLoading)
+                const SpinKitFadingCircle(color: Colors.white, size: 28)
+              else
+                Text(
+                  'B2Y ${balance.toStringAsFixed(4)}', // Mostra o saldo que vem do Provider
+                  style: GoogleFonts.orbitron(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Text(
+                userName.toUpperCase(),
+                style: GoogleFonts.rajdhani(
+                  color: Colors.white.withOpacity(0.8),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          Column(
+            children: [
+              Divider(color: Colors.white.withOpacity(0.2), height: 1),
+              const SizedBox(height: 5),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildWalletAction(
+                    icon: Icons.arrow_downward,
+                    label: 'Depositar',
+                    onTap: () {
+                      Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const BuyCoinsScreen()));
+                    },
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const TradeB2YScreen()));
+                    },
+                    icon: const Icon(Icons.storefront_outlined, size: 16),
+                    label: const Text('Trade B2Y'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.cyanAccent[400],
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)
+                    ),
+                  ),
+                  _buildWalletAction(
+                    icon: Icons.arrow_upward,
+                    label: 'Sacar',
+                    onTap: () {
+                      // Lógica para saque
+                    },
+                  ),
+                ],
+              )
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalletAction({required IconData icon, required String label, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          children: [
+            Icon(icon, color: Colors.white70, size: 20),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _InfoRowSimulator extends StatelessWidget {
   final IconData icon;
@@ -75,32 +226,15 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProviderStateMixin {
-  bool _isTracking = false;
-  bool _isLoadingGpsSave = false;
-  double _currentDistanceKm = 0.0;
-  String? _selectedVehicleIdForTrip;
-  VehicleType? _selectedVehicleTypeForTrip;
-  String? _selectedVehicleDisplayNameForTrip;
-  String? _selectedVehiclePlateForTrip; // <<< VARIÁVEL ADICIONADA
-  StreamSubscription<Position>? _positionStreamSubscriptionForTrip;
-  Position? _lastPositionForTripStart;
-  double _accumulatedDistanceMeters = 0.0;
-  DateTime? _tripStartTime;
+  
   final _originController = TextEditingController();
   final _destinationController = TextEditingController();
+  
   final CarbonService _carbonService = CarbonService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   final ImagePicker _picker = ImagePicker();
-  String? _plateImageURL;
-  String? _odometerStartImageURL;
-  String? _odometerEndImageURL;
-  bool _isProcessingStartImages = false;
-  bool _isProcessingEndImage = false;
-  String? _recognizedPlateText;
-  String? _recognizedOdometerStartText;
-  String? _recognizedOdometerEndText;
+  
   TabController? _tabController;
-  bool _isFetchingGpsTabOrigin = false;
   final _simulatedDistanceKmController = TextEditingController();
   final _simulatedOriginController = TextEditingController();
   final _simulatedDestinationController = TextEditingController();
@@ -110,10 +244,12 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   TripCalculationResult? _simulationResult;
   bool _isCalculatingSimulation = false;
   bool _isFetchingDistance = false;
+  bool _isFetchingGpsTabOrigin = false;
   bool _isFetchingCurrentLocationCity = false;
+  
+  // MUDANÇA: O Stream de CO2 compensado é mantido, pois é específico desta tela
   Stream<double>? _totalCo2OffsetStream;
-  bool _isInitiatingPayment = false;
-  static const double _brlPerKgCo2 = 0.25;
+  
   final FocusNode _simulatedOriginFocusNode = FocusNode();
   final FocusNode _simulatedDestinationFocusNode = FocusNode();
 
@@ -123,25 +259,32 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     _fetchAndSetGpsTabOriginCity();
     _tabController = TabController(length: 2, vsync: this);
     if (_currentUser != null) {
-      _initializeOffsetStream();
+      // MUDANÇA: A inicialização do stream da carteira foi REMOVIDA.
+      // O stream de CO2 compensado permanece, pois é local desta tela.
+      _totalCo2OffsetStream = FirebaseFirestore.instance
+        .collection('carbon_offsets')
+        .where('userId', isEqualTo: _currentUser!.uid)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) => sum + ((doc.data()['offsetAmountKg'] as num?)?.toDouble() ?? 0.0)))
+        .handleError((error) {
+          debugPrint("Erro ao ouvir CO2 compensado: $error");
+          return 0.0;
+        });
     }
     _simulatedDestinationFocusNode.addListener(_onDestinationFocusChange);
   }
   
   @override
   void dispose() {
-    _positionStreamSubscriptionForTrip?.cancel();
     _originController.dispose();
     _destinationController.dispose();
     _tabController?.dispose();
     _simulatedDistanceKmController.dispose();
     _simulatedOriginController.dispose();
     _simulatedDestinationController.dispose();
-    
     _simulatedOriginFocusNode.dispose();
     _simulatedDestinationFocusNode.removeListener(_onDestinationFocusChange);
     _simulatedDestinationFocusNode.dispose();
-
     super.dispose();
   }
   
@@ -152,162 +295,81 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       _fetchAndSetDistance();
     }
   }
+
+  Future<void> _showCompensationDialog({
+    required double co2ToOffset,
+    required String tripId,
+  }) async {
+    if (!mounted || _currentUser == null) return;
   
-  void _initializeOffsetStream() {
-    if (_currentUser == null) return;
-    _totalCo2OffsetStream = FirebaseFirestore.instance
-      .collection('carbon_offsets')
-      .where('userId', isEqualTo: _currentUser!.uid)
-      .snapshots()
-      .map((snapshot) {
-        if (snapshot.docs.isEmpty) {
-          return 0.0;
-        }
-        double total = 0.0;
-        for (var doc in snapshot.docs) {
-          total += (doc.data()['offsetAmountKg'] as num?)?.toDouble() ?? 0.0;
-        }
-        return total;
-      }).handleError((error) {
-        return 0.0;
-      });
-  }
-
-  Future<void> _initiateCompensationPayment({required double cost, required double co2ToOffset}) async {
-    const String carbonOffsetPriceId = "price_1P8g8Y4Ie0XV5ATGXRL1Vv8H"; 
-
-    if (!mounted) return;
-    setState(() => _isInitiatingPayment = true);
+    final walletService = WalletService();
+    final navigator = Navigator.of(context);
+    // MUDANÇA: Obtém o saldo atual diretamente do WalletProvider.
+    final currentBalance = context.read<WalletProvider>().balance;
     
-    try {
-      final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-      final callable = functions.httpsCallable('createStripeCheckout');
-
-      final HttpsCallableResult result = await callable.call<Map<String, dynamic>>({
-        'priceId': carbonOffsetPriceId, 
-        'userId': _currentUser?.uid,
-        'co2ToOffset': co2ToOffset,
-        'costBRL': cost,
-      });
-
-      final checkoutUrl = result.data?['url'];
-      if (checkoutUrl != null) {
-        final uri = Uri.parse(checkoutUrl);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
-          throw 'Não foi possível abrir a página de pagamento.';
-        }
-      } else {
-        throw 'Não foi possível obter a URL de pagamento do servidor.';
-      }
-
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao iniciar pagamento: ${e.toString()}'), backgroundColor: Colors.redAccent),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isInitiatingPayment = false);
-      }
-    }
-  }
-
-Future<void> _showCompensationDialog({required double co2ToOffset, required double cost}) async {
-    if (!mounted) return;
-    
-    const String carbonOffsetPriceId = "price_1RnIIc4Ie0XV5ATGhfVx9F8R";
-
+    final double coinsNeeded = co2ToOffset;
+    final bool hasEnoughBalance = currentBalance >= coinsNeeded;
+  
     await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
+        // O corpo do seu dialog permanece o mesmo
         return AlertDialog(
           backgroundColor: const Color(0xFF2c2c2e),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(
-            'Compensar Emissão de CO₂',
-            style: GoogleFonts.orbitron(color: Colors.greenAccent[400], fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
+          title: Text('Compensar Emissão de CO₂', style: GoogleFonts.orbitron(color: Colors.greenAccent[400], fontWeight: FontWeight.bold), textAlign: TextAlign.center),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'Ajude o planeta compensando sua pegada de carbono.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withOpacity(0.8)),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'VALOR PARA COMPENSAR:',
-                style: GoogleFonts.rajdhani(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 12),
-              ),
-              Text(
-                'R\$ ${cost.toStringAsFixed(2)}',
-                style: GoogleFonts.orbitron(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-              ),
-              Text(
-                '(${co2ToOffset.toStringAsFixed(2)} kg de CO₂)',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
+              Text('Sua viagem emitiu ${co2ToOffset.toStringAsFixed(2)} kg de CO₂.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withAlpha(204))),
+              const SizedBox(height: 16),
+              Text('B2Y Coins necessários: ${coinsNeeded.toStringAsFixed(4)}', style: GoogleFonts.rajdhani(color: Colors.white70, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Seu saldo atual: ${currentBalance.toStringAsFixed(4)}', style: GoogleFonts.rajdhani(color: hasEnoughBalance ? Colors.greenAccent : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 16)),
             ],
           ),
           actionsAlignment: MainAxisAlignment.center,
           actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           actions: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.qr_code),
-                  label: const Text('Pagar com PIX'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                    showManualPixDialog(
-                      context,
-                      amount: cost,
-                      pixKey: "334.021.198-11",
-                    );
-                  },
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.credit_card),
-                  label: const Text('Cartão ou Boleto via Stripe'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[600]),
-                  onPressed: () async {
-                    Navigator.of(dialogContext).pop();
-                    try {
-                        final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-                        final callable = functions.httpsCallable('createStripeCheckout');
-                        final result = await callable.call<Map<String, dynamic>>({
-                            'priceId': carbonOffsetPriceId,
-                            'payment_method_types': ['card', 'boleto'],
-                            'costBRL': cost,
-                            'co2ToOffset': co2ToOffset,
-                        });
-                        final url = result.data['url'];
-                        if (mounted && url != null && await canLaunchUrl(Uri.parse(url))) {
-                            await launchUrl(Uri.parse(url));
-                        } else {
-                            throw Exception("Não foi possível abrir a página de pagamento.");
-                        }
-                    } catch(e) {
-                        if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.redAccent));
-                        }
-                    }
-                  },
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
-                ),
-              ],
-            )
+            if (hasEnoughBalance)
+              ElevatedButton.icon(
+                icon: const Icon(Icons.shield),
+                label: const Text('Compensar com meu Saldo'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 44)),
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop(); 
+                  final success = await walletService.compensateWithCoins(userId: _currentUser!.uid, co2ToOffset: co2ToOffset, tripId: tripId);
+                  if (!mounted) return;
+                  if (success) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compensação realizada com sucesso!'), backgroundColor: Colors.green));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha ao tentar compensar. Verifique seu saldo e tente novamente.'), backgroundColor: Colors.redAccent));
+                  }
+                },
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Você não possui B2Y Coins suficientes.', textAlign: TextAlign.center, style: TextStyle(color: Colors.redAccent[100])),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.storefront_outlined),
+                    label: const Text('Adquirir B2Y Coins'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent[400], foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 44)),
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      navigator.push(MaterialPageRoute(builder: (ctx) => const TradeB2YScreen()));
+                    },
+                  ),
+                ],
+              ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Fechar', style: TextStyle(color: Colors.white70)),
+            ),
           ],
         );
       },
@@ -353,7 +415,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
         }
       }
     } catch (e) {
-      // Silently fail
+      debugPrint("Erro ao buscar cidade: $e");
     }
     return 'Local Desconhecido';
   }
@@ -364,10 +426,9 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) return;
       if (!serviceEnabled) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS desativado. Não foi possível detectar a origem.')));
-        }
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS desativado. Não foi possível detectar a origem.')));
         _originController.text = '';
         return;
       }
@@ -375,13 +436,15 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied && mounted) {
+        if (!mounted) return;
+        if (permission == LocationPermission.denied) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permissão de localização negada para detectar origem.')));
           _originController.text = '';
           return;
         }
       }
-      if (permission == LocationPermission.deniedForever && mounted) {
+      if (permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
         await _showPermissionDeniedPermanentlyDialog("localização para cidade origem");
         _originController.text = '';
         return;
@@ -425,16 +488,14 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
           TextButton(
             child: const Text(kIsWeb ? 'Fechar' : 'Cancelar'),
             onPressed: () {
-              if (mounted) Navigator.of(ctx).pop();
+              Navigator.of(ctx).pop();
             },
           ),
           if (!kIsWeb)
             TextButton(
               onPressed: () {
-                if (mounted) {
-                  Navigator.of(ctx).pop();
-                  openAppSettings();
-                }
+                Navigator.of(ctx).pop();
+                openAppSettings();
               },
               child: const Text('Abrir Configurações'),
             ),
@@ -446,8 +507,12 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
   void _navigateToAddVehicle() { if (mounted) {Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const RegistrationScreen()));} }
   void _navigateToFleetManagement() { if (mounted) {Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const FleetManagementScreen()));} }
   void _navigateToTripHistory() { if (mounted) {Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const TripHistoryScreen()));} }
+  
   Future<void> _logout() async {
-    if (mounted) {Provider.of<UserProvider>(context, listen: false).clearUserDataOnLogout();}
+    if (mounted) {
+      Provider.of<UserProvider>(context, listen: false).clearUserDataOnLogout();
+      Provider.of<TripProvider>(context, listen: false).resetTripState();
+    }
     await FirebaseAuth.instance.signOut();
   }
 
@@ -475,7 +540,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
 
   Future<String?> _uploadImageToFirebaseStorage(XFile imageFile, String imageTypeForPath) async {
     if (_currentUser == null) return null;
-    final String fileName = '${_currentUser!.uid}/${DateTime.now().millisecondsSinceEpoch}_$imageTypeForPath.jpg';
+    final String fileName = '${_currentUser.uid}/${DateTime.now().millisecondsSinceEpoch}_$imageTypeForPath.jpg';
     final Reference storageReference = FirebaseStorage.instance.ref().child('trip_verification_images').child(fileName);
     try {
       Uint8List imageBytes = await imageFile.readAsBytes();
@@ -491,18 +556,23 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
 
   Future<String?> _processImageWithOCR(XFile imageFile, String imageType) async {
     if (!mounted) return null;
+    if (!AppConfig.isGoogleApiKeyConfigured) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ERRO: Chave de API não configurada.'), backgroundColor: Colors.redAccent));
+      return null;
+    }
+
     String? processedTextResult;
     try {
-      const String apiKey = "AIzaSyDy_WBvHCk13hGIfqEP_VPEDu436PvMF0E"; 
-      final Uri url = Uri.parse('https://vision.googleapis.com/v1/images:annotate?key=$apiKey');
+      final Uri url = Uri.parse('https://vision.googleapis.com/v1/images:annotate?key=${AppConfig.googleApiKey}');
       final Uint8List imageBytes = await imageFile.readAsBytes();
       String base64Image = base64Encode(imageBytes);
       final Map<String, dynamic> requestBody = {
         "requests": [{"image": {"content": base64Image},"features": [{"type": "TEXT_DETECTION"}]}]
       };
-      if (!mounted) return null;
+      
       final http.Response response = await http.post(url, headers: {'Content-Type': 'application/json'}, body: json.encode(requestBody));
       if (!mounted) return null;
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
         if (responseData['responses'] != null && responseData['responses'].isNotEmpty && responseData['responses'][0]['fullTextAnnotation'] != null) {
@@ -510,6 +580,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
           List<String> lines = fullText.split('\n');
           List<String> plateCandidates = [];
           String? foundOdometerInLines;
+
           if (imageType == 'odometer_start' || imageType == 'odometer_end') {
             for (String lineContent in lines) { 
               String trimmedLine = lineContent.trim();
@@ -560,37 +631,13 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
                                     orElse: () => plateCandidates.lastWhere((p) => p.length == 6, 
                                     orElse: () => plateCandidates.last));
               }
-
-              if (bestPlateCandidate != null) {
-                setState(() => _recognizedPlateText = bestPlateCandidate);
-                processedTextResult = bestPlateCandidate;
-              } else {
-                setState(() => _recognizedPlateText = null);
-              }
-            } else {
-              setState(() => _recognizedPlateText = null);
+              processedTextResult = bestPlateCandidate;
             }
           } else if (imageType == 'odometer_start' || imageType == 'odometer_end') {
-            if (foundOdometerInLines != null) {
-              processedTextResult = foundOdometerInLines;
-              if (imageType == 'odometer_start') {
-                setState(() => _recognizedOdometerStartText = processedTextResult);
-              } else {
-                setState(() => _recognizedOdometerEndText = processedTextResult);
-              }
-            } else {
-              if (imageType == 'odometer_start') {
-                setState(() => _recognizedOdometerStartText = null);
-              } else {
-                setState(() => _recognizedOdometerEndText = null);
-              }
-            }
+            processedTextResult = foundOdometerInLines;
           }
         } else { 
           if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OCR (Nuvem): Nenhum texto detectado.'), backgroundColor: Colors.orangeAccent));
-          if (imageType == 'plate') setState(() => _recognizedPlateText = null);
-          if (imageType == 'odometer_start') setState(() => _recognizedOdometerStartText = null);
-          if (imageType == 'odometer_end') setState(() => _recognizedOdometerEndText = null);
         }
       } else { 
         if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro no OCR (Nuvem): Cód ${response.statusCode}'), backgroundColor: Colors.redAccent));
@@ -600,11 +647,11 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     }
     return processedTextResult;
   }
-
-  Future<bool> _captureAndUploadStartImages() async {
-    if (!mounted) return false;
-    setState(() => _isProcessingStartImages = true);
-    bool allOk = false;
+  
+  Future<Map<String, dynamic>?> _captureAndUploadStartImages() async {
+    final tripProvider = context.read<TripProvider>();
+    if (!mounted) return null;
+    
     try {
       bool? readyForPlatePhoto;
       if (mounted) {
@@ -619,26 +666,25 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
         );
       }
       if (!mounted || readyForPlatePhoto != true) { 
-        if (readyForPlatePhoto == null && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura da placa cancelada.'), backgroundColor: Colors.orangeAccent));
-        return false;
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura da placa cancelada.'), backgroundColor: Colors.orangeAccent));
+        return null;
       }
 
       XFile? plateImage = await _pickImageWithCamera('Placa');
       if (plateImage == null) { 
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto da placa é obrigatória.'), backgroundColor: Colors.orangeAccent));
-        return false; 
+        return null; 
       }
 
       String? ocrPlateResult = await _processImageWithOCR(plateImage, 'plate');
-      if (!mounted) return false;
+      if (!mounted) return null;
       if (ocrPlateResult == null || ocrPlateResult.isEmpty) { 
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível ler a placa. Tente uma foto melhor.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 3)));
-        return false; 
+        return null; 
       }
-
-      _plateImageURL = await _uploadImageToFirebaseStorage(plateImage, 'plate');
-      if (_plateImageURL == null) return false;
-      if (!mounted) return false;
+      final plateImageUrl = await _uploadImageToFirebaseStorage(plateImage, 'plate');
+      if (plateImageUrl == null) return null;
+      if (!mounted) return null;
 
       bool? readyForOdoStart;
       if (mounted) {
@@ -653,37 +699,45 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
         );
       }
       if (!mounted || readyForOdoStart != true) { 
-        if (readyForOdoStart == null && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura do hodômetro inicial cancelada.'), backgroundColor: Colors.orangeAccent));
-        return false; 
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura do hodômetro inicial cancelada.'), backgroundColor: Colors.orangeAccent));
+        return null; 
       }
 
       XFile? odoStartImage = await _pickImageWithCamera('Hodômetro Inicial');
       if (odoStartImage == null) { 
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto do hodômetro inicial é obrigatória.'), backgroundColor: Colors.orangeAccent));
-        return false; 
+        return null; 
       }
       
       String? ocrOdometerResult = await _processImageWithOCR(odoStartImage, 'odometer_start');
-      if (!mounted) return false;
+      if (!mounted) return null;
       if (ocrOdometerResult == null || ocrOdometerResult.isEmpty) { 
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hodômetro inicial não lido ou inválido. Tente uma foto melhor ou prossiga com cautela.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 4)));
       }
+      final odoStartImageUrl = await _uploadImageToFirebaseStorage(odoStartImage, 'odometer_start');
+      if (odoStartImageUrl == null) return null;
+      
+      tripProvider.setStartImagesData(
+        plateImageURL: plateImageUrl, 
+        ocrPlateResult: ocrPlateResult, 
+        odometerStartImageURL: odoStartImageUrl, 
+        ocrOdometerResult: ocrOdometerResult
+      );
+      
+      return {'status': 'success'};
 
-      _odometerStartImageURL = await _uploadImageToFirebaseStorage(odoStartImage, 'odometer_start');
-      allOk = _plateImageURL != null && _odometerStartImageURL != null; 
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao capturar imagens iniciais: $e'), backgroundColor: Colors.redAccent));
-      allOk = false;
-    } finally {
-      if (mounted) setState(() => _isProcessingStartImages = false);
+      return null;
     }
-    return allOk;
   }
 
-  Future<bool> _captureAndUploadEndOdometerImage() async {
-    if (!mounted) return false;
-    setState(() => _isProcessingEndImage = true);
-    bool success = false; 
+  Future<Map<String, String?>?> _captureAndUploadEndOdometerImage() async {
+    final tripProvider = context.read<TripProvider>();
+    if (!mounted) return null;
+    
+    tripProvider.setProcessingEndImage(true);
+    
     try {
       bool? readyForOdoEnd;
       if (mounted) {
@@ -698,35 +752,35 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
         );
       }
       if (!mounted || readyForOdoEnd != true) { 
-        if (readyForOdoEnd == null && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura do hodômetro final cancelada.'), backgroundColor: Colors.orangeAccent));
-        return false;
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura do hodômetro final cancelada.'), backgroundColor: Colors.orangeAccent));
+        return null;
       }
 
       XFile? odoEndImage = await _pickImageWithCamera('Hodômetro Final');
-      if (odoEndImage == null) return false; 
+      if (odoEndImage == null) return null; 
 
       String? ocrOdometerResult = await _processImageWithOCR(odoEndImage, 'odometer_end');
-      if (!mounted) return false;
+      if (!mounted) return null;
       if (ocrOdometerResult == null || ocrOdometerResult.isEmpty) { 
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hodômetro final não lido ou inválido. O registro seguirá, mas verifique os dados.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 4)));
       }
       
-      _odometerEndImageURL = await _uploadImageToFirebaseStorage(odoEndImage, 'odometer_end');
-      if (_odometerEndImageURL != null) {
-          success = true;
-      } else {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha no upload da foto do hodômetro final.'), backgroundColor: Colors.orangeAccent));
-      }
+      final odoEndImageUrl = await _uploadImageToFirebaseStorage(odoEndImage, 'odometer_end');
+      
+      return {
+        'odometerEndImageURL': odoEndImageUrl,
+        'odometerEndText': ocrOdometerResult,
+      };
+
     } catch (e) {
      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao capturar imagem final: $e'), backgroundColor: Colors.redAccent));
+     return null;
     } finally {
-      if (mounted) setState(() => _isProcessingEndImage = false);
+      if (mounted) tripProvider.setProcessingEndImage(false);
     }
-    return success;
   }
-  
-  // <<< MÉTODO CORRIGIDO >>>
-  Future<Map<String, dynamic>?> _fetchAndShowVehicleSelectionDialog() async {
+
+  Future<SelectedVehicleInfo?> _fetchAndShowVehicleSelectionDialog() async {
     if (_currentUser == null) return null;
     final vehiclesSnapshot = await FirebaseFirestore.instance.collection('vehicles').where('userId', isEqualTo: _currentUser!.uid).get();
     if (!mounted) return null;
@@ -736,28 +790,29 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     }
     final modelIds = vehiclesSnapshot.docs.map((doc) => doc.data()['modelId'] as String?).where((id) => id != null).toList();
     if (modelIds.isEmpty) {
+        if (!mounted) return null;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veículos com formato antigo. Cadastre novamente.'), backgroundColor: Colors.orange));
         return null;
     }
     final modelsSnapshot = await FirebaseFirestore.instance.collection('vehicle_models').where(FieldPath.documentId, whereIn: modelIds).get();
     final modelsDataMap = { for (var doc in modelsSnapshot.docs) doc.id: doc.data() };
+    
     final userVehicles = vehiclesSnapshot.docs.map((vehicleDoc) {
       final vehicleInfo = vehicleDoc.data();
       final modelId = vehicleInfo['modelId'] as String?;
       final modelData = modelsDataMap[modelId];
       if (modelData == null) return null;
-      final type = vehicleTypeFromString(modelData['type'] as String?);
-      return {
-        'userVehicleId': vehicleDoc.id,
-        'modelId': modelId,
-        'label': '${modelData['make'] ?? '?'} ${modelData['model'] ?? '?'} (${modelData['year']})',
-        'type': type,
-        'licensePlate': vehicleInfo['licensePlate'] as String?,
-      };
-    }).where((v) => v != null).cast<Map<String, dynamic>>().toList();
+      
+      return SelectedVehicleInfo(
+        vehicleId: vehicleDoc.id,
+        displayName: '${modelData['make'] ?? '?'} ${modelData['model'] ?? '?'} (${modelData['year']})',
+        vehicleType: vehicleTypeFromString(modelData['type'] as String?),
+        licensePlate: vehicleInfo['licensePlate'] as String?,
+      );
+    }).whereType<SelectedVehicleInfo>().toList();
 
     if (!mounted) return null;
-    return await showDialog<Map<String, dynamic>>(
+    return await showDialog<SelectedVehicleInfo>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
@@ -771,8 +826,8 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
               itemBuilder: (context, index) {
                 final vehicle = userVehicles[index];
                 return ListTile(
-                  leading: Icon((vehicle['type'] as VehicleType?)?.icon ?? Icons.car_rental, color: (vehicle['type'] as VehicleType?)?.displayColor ?? Colors.white70),
-                  title: Text(vehicle['label'], style: const TextStyle(color: Colors.white)),
+                  leading: Icon(vehicle.vehicleType?.icon ?? Icons.car_rental, color: vehicle.vehicleType?.displayColor ?? Colors.white70),
+                  title: Text(vehicle.displayName, style: const TextStyle(color: Colors.white)),
                   onTap: () => Navigator.of(dialogContext).pop(vehicle),
                 );
               },
@@ -786,275 +841,120 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     );
   }
 
-  // <<< MÉTODO CORRIGIDO >>>
-  void _handleVehicleSelection(String vehicleId, VehicleType? vehicleType, String displayName, String? licensePlate) {
-    if (_isTracking || _isProcessingStartImages || _isProcessingEndImage || _isLoadingGpsSave ) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não é possível alterar o veículo durante uma operação.'), backgroundColor: Colors.orangeAccent));
-        return;
-    }
-    setState(() {
-      if (_selectedVehicleIdForTrip == vehicleId) {
-        _selectedVehicleIdForTrip = null; 
-        _selectedVehicleTypeForTrip = null;
-        _selectedVehicleDisplayNameForTrip = null;
-        _selectedVehiclePlateForTrip = null;
-      } else {
-        _selectedVehicleIdForTrip = vehicleId; 
-        _selectedVehicleTypeForTrip = vehicleType;
-        _selectedVehicleDisplayNameForTrip = displayName;
-        _selectedVehiclePlateForTrip = licensePlate;
-      }
-    });
-  }
-  
-  // <<< MÉTODO CORRIGIDO >>>
   Future<void> _showVehicleSelectionDialogForTracking() async {
-    if (_isTracking) return;
+    final tripProvider = context.read<TripProvider>();
+    if (tripProvider.isTracking) return;
     
     final selectedVehicleInfo = await _fetchAndShowVehicleSelectionDialog();
     if (selectedVehicleInfo != null) {
-      _handleVehicleSelection(
-        selectedVehicleInfo['userVehicleId'],
-        selectedVehicleInfo['type'] as VehicleType?,
-        selectedVehicleInfo['label'],
-        selectedVehicleInfo['licensePlate'] as String?,
-      );
+      tripProvider.selectVehicleForTrip(selectedVehicleInfo);
     }
   }
   
   Future<void> _showVehicleSelectionDialogForSimulator() async {
-    final selectedVehicleInfo = await _fetchAndShowVehicleSelectionDialog();
-    if (selectedVehicleInfo != null && mounted) {
+    final selectedVehicleInfoMap = await _fetchAndShowVehicleSelectionDialog();
+    if (selectedVehicleInfoMap != null && mounted) {
       setState(() {
-        _selectedVehicleIdForSimulator = selectedVehicleInfo['userVehicleId'];
-        _selectedVehicleTypeForSimulator = selectedVehicleInfo['type'] as VehicleType?;
-        _simulatedVehicleDisplayName = selectedVehicleInfo['label'];
+        _selectedVehicleIdForSimulator = selectedVehicleInfoMap.vehicleId;
+        _selectedVehicleTypeForSimulator = selectedVehicleInfoMap.vehicleType;
+        _simulatedVehicleDisplayName = selectedVehicleInfoMap.displayName;
         _simulationResult = null;
       });
     }
   }
-  
-  // <<< MÉTODO CORRIGIDO >>>
+
   Future<void> _toggleTracking() async {
-    if (_isProcessingStartImages || _isProcessingEndImage || _isLoadingGpsSave) return;
-
-    if (_isTracking) {
-      // Lógica para PARAR a viagem (continua a mesma)
-      setState(() => _isLoadingGpsSave = true);
-      await _positionStreamSubscriptionForTrip?.cancel();
-      _positionStreamSubscriptionForTrip = null;
-
-      String finalDestinationCity = 'Destino desconhecido';
+    final tripProvider = context.read<TripProvider>();
+    
+    if (tripProvider.isTracking) {
+      // **LÓGICA DE PARAR A VIAGEM**
       try {
-        Position? endPosition = await Geolocator.getLastKnownPosition();
-        endPosition ??= await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
-        finalDestinationCity = await _getCityFromCoordinates(endPosition);
-      } catch (e) {
-        debugPrint("Erro ao obter localização final: $e");
-      }
-
-      await _captureAndUploadEndOdometerImage();
-
-      if (!mounted) {
-        setState(() => _isLoadingGpsSave = false);
-        return;
-      }
-
-      final DateTime tripEndTime = DateTime.now();
-      final double finalDistanceKm = _accumulatedDistanceMeters / 1000.0;
-
-      if (_currentUser != null && _selectedVehicleIdForTrip != null && _selectedVehicleTypeForTrip != null && _tripStartTime != null && finalDistanceKm > 0.01) {
-        final TripCalculationResult results = await _carbonService.getTripCalculationResults(
-          vehicleType: _selectedVehicleTypeForTrip!,
-          distanceKm: finalDistanceKm,
-        );
-
-        final String effectiveDestination = finalDestinationCity != 'Destino desconhecido'
-            ? finalDestinationCity
-            : (_destinationController.text.trim().isNotEmpty ? _destinationController.text.trim() : 'Destino desconhecido');
-
-        final Map<String, dynamic> tripData = {
-          'userId': _currentUser!.uid,
-          'vehicleId': _selectedVehicleIdForTrip!,
-          'vehicleType': _selectedVehicleTypeForTrip!.name,
-          'distanceKm': finalDistanceKm,
-          'startTime': Timestamp.fromDate(_tripStartTime!),
-          'endTime': Timestamp.fromDate(tripEndTime),
-          'durationMinutes': tripEndTime.difference(_tripStartTime!).inMinutes,
-          'origin': _originController.text.trim().isNotEmpty ? _originController.text.trim() : 'Origem desconhecida',
-          'destination': effectiveDestination,
-          'co2EmittedKg': results.co2EmittedKg,
-          'co2SavedKg': results.co2SavedKg,
-          'creditsEarned': results.creditsEarned,
-          'createdAt': FieldValue.serverTimestamp(),
-          'calculationMethod': 'gps',
-          'plateImageURL': _plateImageURL,
-          'odometerStartImageURL': _odometerStartImageURL,
-          'odometerEndImageURL': _odometerEndImageURL,
-          'recognizedPlate': _recognizedPlateText,
-          'recognizedOdometerStart': _recognizedOdometerStartText,
-          'recognizedOdometerEnd': _recognizedOdometerEndText,
-        };
-
+        String finalDestinationCity = 'Destino desconhecido';
+        
         try {
-          await FirebaseFirestore.instance.collection('trips').add(tripData);
+          Position endPosition = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium
+          );
+          finalDestinationCity = await _getCityFromCoordinates(endPosition);
+        } catch (e) {
+          debugPrint("Erro ao obter localização final: $e");
           if (mounted) {
-            if (results.isEmission) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem com emissão registrada!'), backgroundColor: Colors.orange));
-              _showCompensationDialog(co2ToOffset: results.co2EmittedKg, cost: results.compensationCostBRL);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem salva! Créditos calculados.'), backgroundColor: Colors.green));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Não foi possível obter a localização final: $e'), backgroundColor: Colors.orangeAccent)
+            );
+          }
+        }
+        
+        final resultData = await tripProvider.stopAndSaveTracking(
+          context: context,
+          origin: _originController.text, 
+          destination: _destinationController.text, 
+          endCity: finalDestinationCity,
+          captureEndImage: _captureAndUploadEndOdometerImage()
+        );
+        
+        if (!mounted) return;
 
-              if (results.creditsEarned > 0) {
-                await WalletService().addCreditsToWallet(_currentUser!.uid, results.creditsEarned);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('+ ${results.creditsEarned.toStringAsFixed(4)} B2Y Coins na sua carteira!'),
-                        backgroundColor: Colors.amber[800],
-                      ));
-                }
-              }
+        if (resultData != null) {
+          final results = resultData['tripResult'] as TripCalculationResult;
+          final tripId = resultData['tripId'] as String;
+
+          if (results.isEmission) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem com emissão registrada!'), backgroundColor: Colors.orange));
+            _showCompensationDialog(co2ToOffset: results.co2EmittedKg, tripId: tripId);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem salva! Créditos calculados.'), backgroundColor: Colors.green));
+            if (results.creditsEarned > 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('+ ${results.creditsEarned.toStringAsFixed(4)} B2Y Coins na sua carteira!'), backgroundColor: Colors.amber[800])
+              );
             }
           }
-        } catch (e) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar viagem: $e'), backgroundColor: Colors.redAccent));
         }
-
-        _resetTripState();
-      } else {
-        String message = 'Não foi possível salvar. ';
-        if (_currentUser == null) message += 'Erro de usuário. ';
-        if (_selectedVehicleIdForTrip == null || _selectedVehicleTypeForTrip == null) message += 'Veículo inválido. ';
-        if (_tripStartTime == null) message += 'Tempo inválido. ';
-        if (finalDistanceKm <= 0.01) message += 'Distância curta. ';
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.orangeAccent));
-        
-        setState(() => _isLoadingGpsSave = false);
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao parar viagem: $e'), backgroundColor: Colors.redAccent));
+      } finally {
+        if (mounted) {
+          _originController.clear();
+          _destinationController.clear();
+          _fetchAndSetGpsTabOriginCity();
+          tripProvider.resetTripState();
+        }
       }
     } else {
-      // LÓGICA PARA INICIAR a viagem
-      if (_selectedVehicleIdForTrip == null || _selectedVehicleTypeForTrip == null) {
+      // **LÓGICA DE INICIAR VIAGEM** (permanece a mesma)
+      if (tripProvider.selectedVehicle == null) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um veículo.'), backgroundColor: Colors.orangeAccent));
         return;
       }
-      
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS desativado.')));
-        return;
-      }
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permissão negada.')));
-          return;
-        }
-      }
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          await _showPermissionDeniedPermanentlyDialog("localização");
-        }
-        return;
-      }
-
-      bool startImagesOk = await _captureAndUploadStartImages();
-
-      if (startImagesOk) {
-        final String registeredPlate = _selectedVehiclePlateForTrip ?? '';
-        final String recognizedPlate = _recognizedPlateText ?? '';
-        
-        final String normalizedRegisteredPlate = registeredPlate.replaceAll(RegExp(r'[^A-Z0-9]'), '').toUpperCase();
-        final String normalizedRecognizedPlate = recognizedPlate.replaceAll(RegExp(r'[^A-Z0-9]'), '').toUpperCase();
-
-        if (normalizedRegisteredPlate.isEmpty) {
-          if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro: Veículo selecionado não possui placa cadastrada.'), backgroundColor: Colors.redAccent));
-          _resetTripState();
-          return;
-        }
-
-        if (normalizedRecognizedPlate != normalizedRegisteredPlate) {
-          if(mounted) {
-            await showDialog(context: context, builder: (ctx) => AlertDialog(
-              title: const Text('Placa Não Correspondente'),
-              content: Text('Atenção: A placa fotografada ($recognizedPlate) não corresponde à do veículo selecionado ($registeredPlate).'),
-              actions: [TextButton(onPressed: ()=>Navigator.of(ctx).pop(), child: const Text('OK'))],
-            ));
-          }
-          _resetTripState();
-          return;
-        }
-
+      try {
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
         if (!mounted) return;
-        setState(() {
-          _isTracking = true;
-          _accumulatedDistanceMeters = 0.0;
-          _currentDistanceKm = 0.0;
-          _lastPositionForTripStart = null;
-          _tripStartTime = DateTime.now();
-        });
-        const LocationSettings locSettings = LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10);
-        _positionStreamSubscriptionForTrip = Geolocator.getPositionStream(locationSettings: locSettings).listen(
-          (Position position) {
-            if (mounted && _isTracking) {
-              setState(() {
-                if (_lastPositionForTripStart != null) {
-                  double delta = Geolocator.distanceBetween(
-                    _lastPositionForTripStart!.latitude,
-                    _lastPositionForTripStart!.longitude,
-                    position.latitude,
-                    position.longitude,
-                  );
-                  if (delta > 1.0) {
-                    _accumulatedDistanceMeters += delta;
-                    _currentDistanceKm = _accumulatedDistanceMeters / 1000.0;
-                  }
-                }
-                _lastPositionForTripStart = position;
-              });
-            }
-          },
-          onError: (error) {
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro GPS: $error'), backgroundColor: Colors.redAccent));
-          },
-          cancelOnError: false,
-        );
-      } else {
-         if (mounted) {
-            setState(() {
-              _plateImageURL = null;
-              _odometerStartImageURL = null;
-              _recognizedPlateText = null;
-              _recognizedOdometerStartText = null;
-            });
+        if (!serviceEnabled) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS desativado.')));
+          return;
+        }
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+          if (!mounted) return;
+          if (permission == LocationPermission.denied) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permissão negada.')));
+            return;
           }
+        }
+        if (permission == LocationPermission.deniedForever) {
+          if (!mounted) return;
+          await _showPermissionDeniedPermanentlyDialog("localização");
+          return;
+        }
+        
+        await tripProvider.startTracking(captureStartImages: _captureAndUploadStartImages());
+        
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao iniciar viagem: $e'), backgroundColor: Colors.redAccent));
+        tripProvider.resetTripState();
       }
-    }
-  }
-
-  void _resetTripState() {
-    if (mounted) {
-      _originController.clear();
-      _destinationController.clear();
-      _fetchAndSetGpsTabOriginCity();
-      setState(() {
-        _accumulatedDistanceMeters = 0.0;
-        _currentDistanceKm = 0.0;
-        _tripStartTime = null;
-        _plateImageURL = null;
-        _odometerStartImageURL = null;
-        _odometerEndImageURL = null;
-        _recognizedPlateText = null;
-        _recognizedOdometerStartText = null;
-        _recognizedOdometerEndText = null;
-        _isLoadingGpsSave = false;
-        _isTracking = false;
-        _selectedVehicleIdForTrip = null;
-        _selectedVehicleTypeForTrip = null;
-        _selectedVehicleDisplayNameForTrip = null;
-        _selectedVehiclePlateForTrip = null; // <<< LIMPEZA DA PLACA
-      });
     }
   }
 
@@ -1133,7 +1033,8 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     setState(() => _isFetchingCurrentLocationCity = true);
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled && mounted) {
+      if (!mounted) return;
+      if (!serviceEnabled) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Serviço de GPS desativado.')));
         return;
       }
@@ -1141,12 +1042,14 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied && mounted) {
+        if (!mounted) return;
+        if (permission == LocationPermission.denied) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permissão de localização negada.')));
           return;
         }
       }
-      if (permission == LocationPermission.deniedForever && mounted) {
+      if (permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
         await _showPermissionDeniedPermanentlyDialog("localização para cidade origem");
         return;
       }
@@ -1202,14 +1105,19 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
       });
     }
   }
-
+  
+  // MUDANÇA: O método buildIndicatorsSection agora usa o WalletProvider
   Widget _buildIndicatorsSection(String userId) {
     const Color kmColor = Colors.blueAccent;
     const Color co2SavedColor = Colors.greenAccent;
     const Color b2yCoinColor = Colors.amberAccent;
     const Color co2EmittedColor = Color(0xFFff4d4d);
-    const Color walletColor = Colors.purpleAccent;
     final Color co2OffsetColor = Colors.tealAccent[400]!;
+
+    // Ouve o WalletProvider para obter os dados da carteira
+    final walletProvider = context.watch<WalletProvider>();
+    final b2yCoins = walletProvider.balance;
+    final walletIsLoading = walletProvider.isLoading;
 
     return StreamBuilder<double>(
       stream: _totalCo2OffsetStream,
@@ -1236,83 +1144,50 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
               }
             }
             final double netCo2ToOffset = totalCO2Emitido - totalCo2Offset;
-
-            return StreamBuilder<double>(
-              stream: WalletService().getWalletBalanceStream(userId),
-              builder: (context, walletSnapshot) {
-                final b2yCoins = walletSnapshot.data ?? 0.0;
-                bool walletIsLoading = walletSnapshot.connectionState == ConnectionState.waiting;
-                
-                final List<Map<String, dynamic>> indicatorsData = [
-                  {'title': 'KM TOTAL', 'isLoading': tripIndicatorsLoading, 'value': '${totalKm.toStringAsFixed(1)} km', 'icon': Icons.drive_eta_outlined, 'color': kmColor, 'action': null},
-                  {'title': 'CO₂ SEQUESTRADO', 'isLoading': tripIndicatorsLoading, 'value': '${totalCO2Saved.toStringAsFixed(2)} kg', 'icon': Icons.eco, 'color': co2SavedColor, 'action': null},
-                  {
-                    'title': 'CO₂ A COMPENSAR', 
-                    'isLoading': tripIndicatorsLoading || offsetIsLoading, 
-                    'value': '${netCo2ToOffset > 0 ? netCo2ToOffset.toStringAsFixed(2) : "0.00"} kg', 
-                    'icon': Icons.smoke_free, 
-                    'color': co2EmittedColor, 
-                    'action': (netCo2ToOffset > 0.01 && !tripIndicatorsLoading && !offsetIsLoading) 
-                      ? TextButton(
-                          onPressed: () => _showCompensationDialog(
-                              co2ToOffset: netCo2ToOffset,
-                              cost: netCo2ToOffset * _brlPerKgCo2),
-                          style: TextButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: co2EmittedColor, 
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-                          ),
-                          child: const Text('COMPENSAR'),
-                        ) 
-                      : null
-                  },
-                  {'title': 'B2Y COINS', 'isLoading': walletIsLoading, 'value': b2yCoins.toStringAsFixed(4), 'icon': Icons.toll_outlined, 'color': b2yCoinColor, 'action': null},
-                  {'title': 'CO₂ COMPENSADO', 'isLoading': offsetIsLoading, 'value': '${totalCo2Offset.toStringAsFixed(2)} kg', 'icon': Icons.shield_outlined, 'color': co2OffsetColor, 'action': null},
-                  {'title': 'CARTEIRA (R\$)', 'isLoading': false, 'value': 'Comprar Moedas', 'icon': Icons.account_balance_wallet_outlined, 'color': walletColor, 'action': null},
-                ];
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: GridView.builder(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12.0,
-                      crossAxisSpacing: 12.0,
-                      childAspectRatio: 1.7,
-                    ),
-                    itemCount: indicatorsData.length,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemBuilder: (context, index) {
-                      final data = indicatorsData[index];
-                      final card = IndicatorCard(
-                        title: data['title'],
-                        isLoading: data['isLoading'],
-                        value: data['value'],
-                        icon: data['icon'],
-                        accentColor: data['color'],
-                        actionButton: data['action'],
-                      );
-
-                      if (data['title'] == 'CARTEIRA (R\$)') {
-                        return GestureDetector(
-                          onTap: () {
-                            if (mounted) {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(builder: (ctx) => const BuyCoinsScreen()),
-                              );
-                            }
-                          },
-                          child: card,
-                        );
-                      }
-                      return card;
-                    },
-                  ).animate().fadeIn(delay: 200.ms),
-                );
+            
+            final List<Map<String, dynamic>> indicatorsData = [
+              {'title': 'KM TOTAL', 'isLoading': tripIndicatorsLoading, 'value': '${totalKm.toStringAsFixed(1)} km', 'icon': Icons.drive_eta_outlined, 'color': kmColor, 'action': null},
+              {'title': 'CO₂ SEQUESTRADO', 'isLoading': tripIndicatorsLoading, 'value': '${totalCO2Saved.toStringAsFixed(2)} kg', 'icon': Icons.eco, 'color': co2SavedColor, 'action': null},
+              {
+                'title': 'CO₂ A COMPENSAR', 
+                'isLoading': tripIndicatorsLoading || offsetIsLoading, 
+                'value': '${netCo2ToOffset > 0 ? netCo2ToOffset.toStringAsFixed(2) : "0.00"} kg', 
+                'icon': Icons.smoke_free, 
+                'color': co2EmittedColor, 
+                'action': (netCo2ToOffset > 0.01 && !tripIndicatorsLoading && !offsetIsLoading) 
+                  ? TextButton(
+                      onPressed: () => _showCompensationDialog(co2ToOffset: netCo2ToOffset, tripId: 'general_offset'),
+                      style: TextButton.styleFrom(backgroundColor: Colors.white, foregroundColor: co2EmittedColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: const Text('COMPENSAR'),
+                    ) 
+                  : null
               },
+              {'title': 'B2Y COINS', 'isLoading': walletIsLoading, 'value': b2yCoins.toStringAsFixed(4), 'icon': Icons.toll_outlined, 'color': b2yCoinColor, 'action': null},
+              {'title': 'CO₂ COMPENSADO', 'isLoading': offsetIsLoading, 'value': '${totalCo2Offset.toStringAsFixed(2)} kg', 'icon': Icons.shield_outlined, 'color': co2OffsetColor, 'action': null},
+            ];
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12.0, crossAxisSpacing: 12.0, childAspectRatio: 1.7),
+                itemCount: indicatorsData.length,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemBuilder: (context, index) {
+                  final data = indicatorsData[index];
+                  return IndicatorCard(
+                    title: data['title'],
+                    isLoading: data['isLoading'],
+                    valueWidget: Text(
+                      data['value'].toString(),
+                      style: GoogleFonts.orbitron(color: data['color'] as Color, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    icon: data['icon'],
+                    accentColor: data['color'],
+                    actionButton: data['action'],
+                  );
+                },
+              ).animate().fadeIn(delay: 200.ms),
             );
           },
         );
@@ -1320,63 +1195,82 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     );
   }
 
+  // MUDANÇA: Lógica do indicador de progresso para usar dados reais
   Widget _buildProgressBarSection() {
-    double currentProgress = 0.0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16.0),
-      child: Row(
-        children: [
-          CircularPercentIndicator(
-             radius: 30.0,
-             lineWidth: 7.0,
-             percent: currentProgress,
-             center: Text( "${(currentProgress * 100).toInt()}%", style: GoogleFonts.orbitron(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white70), ),
-             progressColor: Colors.cyanAccent[400],
-             backgroundColor: Colors.grey[800]!,
-             circularStrokeCap: CircularStrokeCap.round,
-             animateFromLastPercent: true,
-             animation: true,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              "Economizando CO₂ com transporte sustentável",
-              style: GoogleFonts.poppins(
-                fontSize: 13, 
-                color: Colors.white.withAlpha(204),
+    // Para que este indicador funcione, precisamos dos dados de CO2 salvo.
+    // Usamos um StreamBuilder para obter o valor mais recente.
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('trips').where('userId', isEqualTo: _currentUser?.uid).snapshots(),
+      builder: (context, tripSnapshot) {
+        double totalCO2Saved = 0.0;
+        if (tripSnapshot.hasData) {
+          for (var doc in tripSnapshot.data!.docs) {
+            totalCO2Saved += (doc.data() as Map<String, dynamic>)['co2SavedKg'] as num? ?? 0.0;
+          }
+        }
+        
+        // Defina aqui a sua meta. Exemplo: 100 kg de CO2
+        double metaCO2 = 100.0; 
+        // Calcula o progresso, garantindo que o valor fique entre 0.0 e 1.0
+        double currentProgress = (totalCO2Saved / metaCO2).clamp(0.0, 1.0);
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          child: Row(
+            children: [
+              CircularPercentIndicator(
+                 radius: 30.0,
+                 lineWidth: 7.0,
+                 percent: currentProgress, // Usa o valor calculado
+                 center: Text( "${(currentProgress * 100).toInt()}%", style: GoogleFonts.orbitron(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white70), ),
+                 progressColor: Colors.cyanAccent[400],
+                 backgroundColor: Colors.grey.shade800,
+                 circularStrokeCap: CircularStrokeCap.round,
+                 animation: true,
               ),
-            ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  "Economizando CO₂ com transporte sustentável",
+                  style: TextStyle(fontSize: 13, color: Colors.white70),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2);
+        ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2);
+      }
+    );
   }
 
   Widget _buildGpsTrackingTabContent(ThemeData theme, Color subtleTextColor, Color primaryColor){
       final errorColor = theme.colorScheme.error;
       final accentColor = primaryColor;
-      bool isCurrentlyProcessingImages = _isProcessingStartImages || _isProcessingEndImage;
-      bool canEditFields = !_isTracking && !isCurrentlyProcessingImages && !_isFetchingGpsTabOrigin && !_isLoadingGpsSave;
+      
+      final tripProvider = context.watch<TripProvider>();
+      
+      bool isCurrentlyProcessingImages = tripProvider.isProcessingStartImages || tripProvider.isProcessingEndImage;
+      bool canEditFields = !tripProvider.isTracking && !isCurrentlyProcessingImages && !_isFetchingGpsTabOrigin && !tripProvider.isLoadingGpsSave;
+      
       return Card( elevation: 4, margin: EdgeInsets.zero, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), color: Colors.grey[900]!.withAlpha(128),
         child: Padding( padding: const EdgeInsets.all(16.0),
           child: Column( crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text('Monitorar Viagem GPS', style: GoogleFonts.orbitron(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 16),
             GestureDetector(
-              onTap: (_isTracking || isCurrentlyProcessingImages) ? null : _showVehicleSelectionDialogForTracking,
+              onTap: (tripProvider.isTracking || isCurrentlyProcessingImages) ? null : _showVehicleSelectionDialogForTracking,
               child: ListTile( 
                 contentPadding: EdgeInsets.zero, 
                 dense: true, 
                 leading: Icon(
-                  _selectedVehicleTypeForTrip?.icon ?? Icons.directions_car, 
-                  color: _selectedVehicleIdForTrip != null ? _selectedVehicleTypeForTrip!.displayColor : subtleTextColor,
+                  tripProvider.selectedVehicle?.vehicleType?.icon ?? Icons.directions_car, 
+                  color: tripProvider.selectedVehicle != null ? tripProvider.selectedVehicle!.vehicleType!.displayColor : subtleTextColor,
                   size: 30, 
                 ), 
                 title: Text('Veículo Selecionado:', style: theme.textTheme.bodySmall?.copyWith(color: subtleTextColor)), 
                 subtitle: Text(
-                  _selectedVehicleDisplayNameForTrip ?? "Selecione um veículo",
+                  tripProvider.selectedVehicle?.displayName ?? "Selecione um veículo",
                   style: theme.textTheme.bodyMedium?.copyWith( 
-                    fontWeight: _selectedVehicleIdForTrip != null ? FontWeight.bold : FontWeight.normal, 
-                    color: _selectedVehicleIdForTrip == null ? errorColor : Colors.white70 
+                    fontWeight: tripProvider.selectedVehicle != null ? FontWeight.bold : FontWeight.normal, 
+                    color: tripProvider.selectedVehicle == null ? errorColor : Colors.white70 
                   )
                 ),
                 trailing: const Icon(Icons.arrow_drop_down, color: Colors.white70), 
@@ -1410,40 +1304,38 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
             const SizedBox(height: 10),
             TextFormField( controller: _destinationController, enabled: canEditFields, style: const TextStyle(color: Colors.white), decoration: InputDecoration( labelText: 'Destino (Opcional)', labelStyle: TextStyle(color: subtleTextColor), hintText: 'Ex: Mercado, Academia...', hintStyle: TextStyle(color: subtleTextColor.withAlpha(128)), isDense: true, prefixIcon: Icon(Icons.flag_outlined, color: subtleTextColor), filled: true, fillColor: Colors.black.withAlpha(51), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: accentColor)), 
             ), ), const SizedBox(height: 16),
-            if (_isTracking)
-               Center( child: Padding( padding: const EdgeInsets.symmetric(vertical: 8.0), child: Row( mainAxisAlignment: MainAxisAlignment.center, children: [ Icon(Icons.route, color: accentColor, size: 24), const SizedBox(width: 8), Text( '${_currentDistanceKm.toStringAsFixed(2)} km', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: accentColor) ), const SizedBox(width: 10), SpinKitPulse(color: accentColor, size: 15.0) ] ) ) ).animate(onPlay: (c)=>c.repeat()).shimmer(delay: 400.ms, duration: 1000.ms, color: Colors.white.withAlpha(26)),
+            if (tripProvider.isTracking)
+               Center( child: Padding( padding: const EdgeInsets.symmetric(vertical: 8.0), child: Row( mainAxisAlignment: MainAxisAlignment.center, children: [ Icon(Icons.route, color: accentColor, size: 24), const SizedBox(width: 8), Text( '${tripProvider.currentDistanceKm.toStringAsFixed(2)} km', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: accentColor) ), const SizedBox(width: 10), SpinKitPulse(color: accentColor, size: 15.0) ] ) ) ).animate(onPlay: (c)=>c.repeat()).shimmer(delay: 400.ms, duration: 1000.ms, color: Colors.white.withAlpha(26)),
             const SizedBox(height: 16),
             Center(
-              child: (_isLoadingGpsSave || _isProcessingStartImages || _isProcessingEndImage)
+              child: (tripProvider.isLoadingGpsSave || tripProvider.isProcessingStartImages || tripProvider.isProcessingEndImage)
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Column( children: [
                       SpinKitWave(color: accentColor, size: 25.0), const SizedBox(height: 8),
                       Text(
-                        _isProcessingStartImages ? "Processando fotos e OCR..." :
-                        _isProcessingEndImage ? "Processando foto e OCR..." :
-                        _isLoadingGpsSave ? "Salvando viagem..." : "Aguarde...",
+                        tripProvider.loadingMessage,
                         style: TextStyle(color: subtleTextColor)
                       )
                     ],),)
                 : ElevatedButton.icon(
-                    onPressed: (_selectedVehicleIdForTrip != null || _isTracking) ? _toggleTracking : null,
-                    icon: Icon( _isTracking ? Icons.stop_circle_outlined : Icons.play_circle_outline, size: 22),
+                    onPressed: (tripProvider.selectedVehicle != null || tripProvider.isTracking) ? _toggleTracking : null,
+                    icon: Icon( tripProvider.isTracking ? Icons.stop_circle_outlined : Icons.play_circle_outline, size: 22),
                     label: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10.0),
-                      child: Text(_isTracking ? 'Parar e Salvar Viagem' : 'Iniciar Viagem', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                      child: Text(tripProvider.isTracking ? 'Parar e Salvar Viagem' : 'Iniciar Viagem', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isTracking ? errorColor.withAlpha(230) : accentColor,
-                      foregroundColor: _isTracking ? Colors.white : Colors.black87,
+                      backgroundColor: tripProvider.isTracking ? errorColor.withAlpha(230) : accentColor,
+                      foregroundColor: tripProvider.isTracking ? Colors.white : Colors.black87,
                       padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      elevation: 8, shadowColor: _isTracking ? errorColor : accentColor,
+                      elevation: 8, shadowColor: tripProvider.isTracking ? errorColor : accentColor,
                       disabledBackgroundColor: Colors.grey[800],
                     ),
                   ).animate().scale(delay: 100.ms),
             ),
-            if (!_isTracking && _selectedVehicleIdForTrip == null && !isCurrentlyProcessingImages)
+            if (!tripProvider.isTracking && tripProvider.selectedVehicle == null && !isCurrentlyProcessingImages)
               Padding(
                 padding: const EdgeInsets.only(top: 10.0),
                 child: Center(
@@ -1698,6 +1590,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
   }
 
   Widget _buildVehicleList(String userId, ThemeData theme, Color primaryColor, Color subtleTextColor) {
+    final tripProvider = context.watch<TripProvider>();
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('vehicles').where('userId', isEqualTo: userId).orderBy('createdAt', descending: true).snapshots(),
       builder: (context, vehicleSnapshot) {
@@ -1768,7 +1661,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
 
                 final vehicleType = vehicleTypeFromString(modelData['type']);
                 final displayName = '${modelData['make'] ?? '?'} ${modelData['model'] ?? '?'} (${modelData['year']})';
-                final isSelected = userVehicleId == _selectedVehicleIdForTrip;
+                final isSelected = userVehicleId == tripProvider.selectedVehicle?.vehicleId;
 
                 return Card(
                   margin: EdgeInsets.zero,
@@ -1776,10 +1669,17 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
                   color: Colors.grey[850]!.withAlpha(153),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: isSelected ? primaryColor : Colors.grey[700]!, width: isSelected ? 2.0 : 0.8),
+                    side: BorderSide(color: isSelected ? primaryColor : Colors.grey.shade700, width: isSelected ? 2.0 : 0.8),
                   ),
                   child: InkWell(
-                    onTap: () => _handleVehicleSelection(userVehicleId, vehicleType, displayName, vehicleData['licensePlate'] as String?),
+                    onTap: () => context.read<TripProvider>().selectVehicleForTrip(
+                      SelectedVehicleInfo(
+                        vehicleId: userVehicleId, 
+                        vehicleType: vehicleType, 
+                        displayName: displayName, 
+                        licensePlate: vehicleData['licensePlate'] as String?
+                      )
+                    ),
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
@@ -1816,6 +1716,12 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
           children: [
             _buildNavButton(
               context,
+              icon: Icons.shield,
+              label: 'Emblemas',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BadgesScreen())),
+            ),
+            _buildNavButton(
+              context,
               icon: Icons.receipt_long,
               label: 'Extrato',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransactionHistoryScreen())),
@@ -1825,6 +1731,14 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
               icon: Icons.history,
               label: 'Histórico',
               onPressed: _navigateToTripHistory,
+            ),
+            _buildNavButton(
+              context,
+              icon: Icons.bar_chart,
+              label: 'Relatórios',
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReportsScreen()));
+              },
             ),
             _buildNavButton(
               context,
@@ -1847,7 +1761,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
 
   Widget _buildNavButton(BuildContext context, {required IconData icon, required String label, VoidCallback? onPressed, bool isHighlight = false}) {
     final color = isHighlight ? Colors.cyanAccent : Colors.white70;
-    final backgroundColor = isHighlight ? Colors.cyan.withOpacity(0.2) : Colors.grey[800];
+    final backgroundColor = isHighlight ? Colors.cyan.withAlpha(51) : Colors.grey[800];
 
     return ElevatedButton.icon(
       onPressed: onPressed,
@@ -1967,6 +1881,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     );
   }
 
+  // MUDANÇA: O widget `_buildGpsTrackingTabContentWrapper` agora usa o DigitalWalletCard sem passar parâmetros
   Widget _buildGpsTrackingTabContentWrapper(ThemeData theme, Color subtleTextColor, Color primaryColor) {
     final user = _currentUser;
     if (user == null) {
@@ -1980,7 +1895,12 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
         const AdBannerPlaceholder(), 
         const SizedBox(height: 12), 
         _buildIndicatorsSection(userId),
-        const SizedBox(height: 12), 
+        const SizedBox(height: 16),
+        const SizedBox(
+          height: 220,
+          child: DigitalWalletCard(), // Agora não precisa de parâmetros
+        ),
+        const SizedBox(height: 12),
         _buildProgressBarSection(),
         Divider(height: 20, thickness: 0.5, color: Colors.grey[800]), 
         _buildGpsTrackingTabContent(theme, subtleTextColor, primaryColor),
@@ -2062,6 +1982,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     );
   }
   
+  // O método build principal agora obtém o userProvider para passar para o AppBar
   @override
   Widget build(BuildContext context) {
     final user = _currentUser;
@@ -2080,27 +2001,11 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
     }
     final Color accentColor = Colors.cyanAccent[400]!;
     final Color subtleTextColor = Colors.grey[500] ?? Colors.grey;
-    const double appBarExpandedHeight = 150.0; 
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (ctx) => const TradeB2YScreen()),
-          );
-        },
-        label: const Text("Trade B2Y"),
-        icon: const Icon(Icons.storefront_outlined),
-        backgroundColor: accentColor,
-        foregroundColor: Colors.black,
-        elevation: 8,
-        ).animate().scale(delay: 300.ms
-      ),
-      
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      
       body: NestedScrollView(
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+          // ... (seu AppBar e TabBar permanecem os mesmos)
           return <Widget>[
             SliverAppBar(
               elevation: 1.0,
@@ -2108,7 +2013,7 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
               pinned: true, 
               floating: true, 
               forceElevated: innerBoxIsScrolled, 
-              expandedHeight: appBarExpandedHeight, 
+              expandedHeight: 150.0, 
               primary: true, 
               flexibleSpace: FlexibleSpaceBar(
                 background: SafeArea( 
@@ -2124,53 +2029,21 @@ Future<void> _showCompensationDialog({required double co2ToOffset, required doub
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Text(
-                              'B2Y Carbon Cockpit',
-                              style: GoogleFonts.orbitron(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 20, 
-                                color: Colors.white.withAlpha(242),
-                              ),
-                            ),
+                            Text('B2Y Carbon Cockpit', style: GoogleFonts.orbitron(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.white.withAlpha(242))),
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                IconButton(icon: const Icon(Icons.public, color: Colors.cyanAccent), tooltip: 'Impacto Global', onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const GlobalDashboardScreen()))),
                                 if (userProvider.canAccessAdminPanel)
-                                  IconButton(
-                                    icon: const Icon(Icons.admin_panel_settings, color: Colors.amberAccent),
-                                    tooltip: 'Painel Administrativo',
-                                    onPressed: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(builder: (ctx) => const AdminScreen()),
-                                      );
-                                    },
-                                  ),
-                                
-                                IconButton(
-                                  icon: Icon(Icons.info_outline_rounded, color: accentColor.withAlpha(180)),
-                                  tooltip: 'Sobre',
-                                  onPressed: () {}, //_showAboutDialog,
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.power_settings_new_rounded, color: accentColor),
-                                  tooltip: 'Sair',
-                                  onPressed: _logout,
-                                ),
+                                  IconButton(icon: const Icon(Icons.admin_panel_settings, color: Colors.amberAccent), tooltip: 'Painel Administrativo', onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminScreen()))),
+                                IconButton(icon: Icon(Icons.info_outline_rounded, color: accentColor.withAlpha(180)), tooltip: 'Sobre', onPressed: _showAboutDialog),
+                                IconButton(icon: Icon(Icons.power_settings_new_rounded, color: accentColor), tooltip: 'Sair', onPressed: _logout),
                               ],
                             )
                           ],
                         ),
                         const SizedBox(height: 8), 
-                        Text(
-                          'Olá, $displayName!',
-                          style: GoogleFonts.poppins(
-                            textStyle: theme.textTheme.headlineSmall?.copyWith( 
-                               fontWeight: FontWeight.w500,
-                              color: Colors.white.withAlpha(204),
-                              fontSize: (theme.textTheme.headlineSmall?.fontSize ?? 24) * 0.85, 
-                            ),
-                          ),
-                        ),
+                        Text('Olá, $displayName!', style: GoogleFonts.poppins(textStyle: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w500, color: Colors.white.withAlpha(204), fontSize: (theme.textTheme.headlineSmall?.fontSize ?? 24) * 0.85))),
                         const SizedBox(height: 24),
                       ],
                     ),

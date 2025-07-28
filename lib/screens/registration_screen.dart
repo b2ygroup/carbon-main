@@ -210,8 +210,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       setState(() {
         _selectedModelId = selectedModel['id'];
         _selectedModelData = selectedModel;
-        // Preenche o ano automaticamente com base no modelo, mas permite edição.
-        _yearController.text = selectedModel['year']?.toString() ?? '';
+
       });
     }
   }

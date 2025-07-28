@@ -1,45 +1,14 @@
-import 'dart:async';
+// lib/screens/splash_screen.dart (VERSÃO SIMPLIFICADA, SEM LÓGICA)
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:carbon/main.dart';
 
-class SplashScreen extends StatefulWidget {
+// MUDANÇA: Convertido para um StatelessWidget.
+// A sua única responsabilidade é exibir a UI.
+class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
-    _navigateToNextScreen();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _navigateToNextScreen() {
-    Timer(const Duration(milliseconds: 4500), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const AuthWrapper()),
-        );
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +29,6 @@ class _SplashScreenState extends State<SplashScreen>
         decoration: const BoxDecoration(gradient: backgroundGradient),
         child: Stack(
           children: [
-            // 💨 EFEITO DE PARTÍCULAS SUBINDO
             ...List.generate(35, (index) {
               final delay = random.nextInt(3000);
               final duration = random.nextInt(4000) + 2000;
@@ -73,24 +41,22 @@ class _SplashScreenState extends State<SplashScreen>
                   backgroundColor:
                       greenAccent.withOpacity(random.nextDouble() * 0.6 + 0.3),
                 )
-                    .animate()
+                    .animate(onPlay: (c) => c.repeat())
                     .moveY(
                       duration: duration.ms,
                       delay: delay.ms,
                       begin: 0,
                       end: -(screenSize.height + 50),
-                      curve: Curves.easeInOut,
+                      curve: Curves.linear,
                     )
                     .fadeOut(duration: duration.ms),
               );
             }),
 
-            // 🔥 ÍCONE CENTRAL FUTURISTA (LEAF + CO2 + CARRO)
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Glow Icon Stack
                   Stack(
                     alignment: Alignment.center,
                     children: [
@@ -107,10 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
                       )
                     ],
                   ).animate().fadeIn(duration: 1000.ms).scale(),
-
                   const SizedBox(height: 30),
-
-                  // 🔷 NOME DO APP
                   Text(
                     'B2Y Carbon',
                     style: GoogleFonts.orbitron(
@@ -126,10 +89,7 @@ class _SplashScreenState extends State<SplashScreen>
                       .fadeIn(duration: 1000.ms)
                       .slideY(begin: 0.5)
                       .shimmer(duration: 1500.ms, color: greenAccent.withOpacity(0.4)),
-
                   const SizedBox(height: 14),
-
-                  // 💬 SLOGAN
                   Text(
                     'Dirija, ganhe dinheiro e contribua com o meio ambiente',
                     style: GoogleFonts.poppins(
@@ -142,15 +102,43 @@ class _SplashScreenState extends State<SplashScreen>
                       .animate()
                       .fadeIn(duration: 1400.ms, delay: 800.ms)
                       .slideY(begin: 0.4),
-
+                  
+                  const SizedBox(height: 40),
+                  ShaderMask(
+                    blendMode: BlendMode.srcIn,
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [primaryColor, greenAccent],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ).createShader(bounds),
+                    child: Text(
+                      'A Fintech Verde',
+                      style: GoogleFonts.audiowide(
+                        fontSize: 22,
+                        fontWeight: FontWeight.normal,
+                        letterSpacing: 1.5,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(color: greenAccent.withOpacity(0.4), blurRadius: 10),
+                        ],
+                      ),
+                    )
+                    .animate()
+                    .fadeIn(delay: 2000.ms, duration: 1000.ms)
+                    .scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOut)
+                    .then(delay: 100.ms)
+                    .shimmer(
+                      duration: 1800.ms,
+                      color: Colors.white,
+                      angle: 0.6,
+                    ),
+                  ),
                   const SizedBox(height: 60),
-
-                  // 🔄 Loading Spinner
+                  // MUDANÇA: O SpinKitPulse agora não precisa de um controller.
                   SpinKitPulse(
-                    controller: _controller,
                     color: primaryColor.withOpacity(0.9),
                     size: 40.0,
-                  ).animate().fadeIn(delay: 2600.ms),
+                  ).animate(onPlay: (c) => c.repeat()).fadeIn(delay: 2600.ms),
                 ],
               ),
             ),

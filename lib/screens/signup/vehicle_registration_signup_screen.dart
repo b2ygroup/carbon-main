@@ -1,16 +1,15 @@
 // lib/screens/signup/vehicle_registration_signup_screen.dart (COMPLETO E CORRIGIDO)
+import 'package:carbon/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:carbon/main.dart'; // Para o AuthWrapper
 
 enum RegistrationStep { categorySelection, detailsForm }
 
 class VehicleRegistrationScreenForSignup extends StatefulWidget {
-  // <<< ALTERAÇÃO 1: Adicionado o parâmetro user, que é obrigatório >>>
   final User user;
   
   const VehicleRegistrationScreenForSignup({super.key, required this.user});
@@ -87,14 +86,13 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
           .where('category', isEqualTo: _selectedCategory)
           .where('make', isEqualTo: make)
           .orderBy('model')
-          .orderBy('year')
           .get();
 
       final models = snapshot.docs.map((doc) {
         final data = doc.data();
         return {
           'id': doc.id,
-          'name': '${data['model']} ${data['version']} (${data['year']})'
+          'name': '${data['model']} ${data['version'] ?? ''}'
         };
       }).toList();
       
@@ -123,7 +121,6 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
 
     setState(() => _isLoading = true);
     
-    // <<< ALTERAÇÃO 2: Usando o user passado via widget, garantido de não ser nulo >>>
     final user = widget.user;
 
     try {
@@ -141,8 +138,10 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Veículo registrado com sucesso! Bem-vindo(a)!'),
             backgroundColor: Colors.green));
+
+        // MUDANÇA: Navega para o Dashboard, pois o usuário já está logado.
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (ctx) => const AuthWrapper()),
+          MaterialPageRoute(builder: (ctx) => const DashboardScreen()),
           (route) => false,
         );
       }

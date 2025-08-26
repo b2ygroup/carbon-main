@@ -30,8 +30,8 @@ class SplashScreen extends StatelessWidget {
         child: Stack(
           children: [
             ...List.generate(35, (index) {
-              final delay = random.nextInt(3000);
-              final duration = random.nextInt(4000) + 2000;
+              final delay = random.nextInt(4000);
+              final duration = random.nextInt(5000) + 3000;
               final size = random.nextDouble() * 2 + 1;
               return Positioned(
                 left: random.nextDouble() * screenSize.width,
@@ -62,17 +62,17 @@ class SplashScreen extends StatelessWidget {
                     children: [
                       Icon(Icons.eco, size: 90, color: greenAccent.withOpacity(0.3))
                           .animate(onPlay: (c) => c.repeat(reverse: true))
-                          .scaleXY(end: 1.1, duration: 1500.ms),
+                          .scaleXY(end: 1.1, duration: 2500.ms),
                       const Icon(Icons.co2, size: 50, color: primaryColor),
                       Positioned(
                         bottom: -12,
                         child: Icon(Icons.electric_car,
                             size: 38, color: Colors.white.withOpacity(0.8))
                             .animate(onPlay: (c) => c.repeat(reverse: true))
-                            .slideX(begin: -0.1, end: 0.1, duration: 1800.ms),
+                            .slideX(begin: -0.1, end: 0.1, duration: 2800.ms),
                       )
                     ],
-                  ).animate().fadeIn(duration: 1000.ms).scale(),
+                  ).animate().fadeIn(duration: 2000.ms).scale(),
                   const SizedBox(height: 30),
                   Text(
                     'B2Y Carbon',
@@ -86,9 +86,9 @@ class SplashScreen extends StatelessWidget {
                     ),
                   )
                       .animate()
-                      .fadeIn(duration: 1000.ms)
+                      .fadeIn(duration: 2000.ms)
                       .slideY(begin: 0.5)
-                      .shimmer(duration: 1500.ms, color: greenAccent.withOpacity(0.4)),
+                      .shimmer(duration: 2500.ms, color: greenAccent.withOpacity(0.4)),
                   const SizedBox(height: 14),
                   Text(
                     'Dirija, ganhe dinheiro e contribua com o meio ambiente',
@@ -100,7 +100,7 @@ class SplashScreen extends StatelessWidget {
                     textAlign: TextAlign.center,
                   )
                       .animate()
-                      .fadeIn(duration: 1400.ms, delay: 800.ms)
+                      .fadeIn(duration: 2400.ms, delay: 900.ms)
                       .slideY(begin: 0.4),
                   
                   const SizedBox(height: 40),
@@ -124,11 +124,11 @@ class SplashScreen extends StatelessWidget {
                       ),
                     )
                     .animate()
-                    .fadeIn(delay: 2000.ms, duration: 1000.ms)
+                    .fadeIn(delay: 3000.ms, duration: 2000.ms)
                     .scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOut)
-                    .then(delay: 100.ms)
+                    .then(delay: 200.ms)
                     .shimmer(
-                      duration: 1800.ms,
+                      duration: 2800.ms,
                       color: Colors.white,
                       angle: 0.6,
                     ),
@@ -138,7 +138,7 @@ class SplashScreen extends StatelessWidget {
                   SpinKitPulse(
                     color: primaryColor.withOpacity(0.9),
                     size: 40.0,
-                  ).animate(onPlay: (c) => c.repeat()).fadeIn(delay: 2600.ms),
+                  ).animate(onPlay: (c) => c.repeat()).fadeIn(delay: 3600.ms),
                 ],
               ),
             ),

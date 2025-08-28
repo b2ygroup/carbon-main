@@ -1,4 +1,4 @@
-// lib/screens/dashboard_screen.dart (VERSÃO ATUALIZADA COM TODAS AS CORREÇÕES)
+// lib/screens/dashboard_screen.dart (VERSÃO FINAL E CORRIGIDA)
 
 import 'dart:async';
 import 'dart:convert';
@@ -66,8 +66,7 @@ class DigitalWalletCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            // CORREÇÃO: `withOpacity` trocado por `withAlpha` para melhor performance.
-            color: Colors.black.withAlpha((255 * 0.4).round()),
+            color: Colors.black.withOpacity(0.4),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -246,33 +245,62 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   bool _isFetchingGpsTabOrigin = false;
   bool _isFetchingCurrentLocationCity = false;
   
-  Stream<double>? _totalCo2OffsetStream;
+  StreamSubscription? _totalCo2OffsetStreamSubscription;
+  double _totalCo2Offset = 0.0;
+  bool _isCo2OffsetLoading = true;
   
   final FocusNode _simulatedOriginFocusNode = FocusNode();
   final FocusNode _simulatedDestinationFocusNode = FocusNode();
 
+  final ScrollController _gpsTabScrollController = ScrollController();
+  final ScrollController _simulatorTabScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
-    _fetchAndSetGpsTabOriginCity();
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _fetchAndSetGpsTabOriginCity();
+      }
+    });
+
     _tabController = TabController(length: 2, vsync: this);
-    final user = _currentUser; // Evita usar o campo de classe diretamente em closures.
+    final user = _currentUser;
     if (user != null) {
-      _totalCo2OffsetStream = FirebaseFirestore.instance
+      _totalCo2OffsetStreamSubscription = FirebaseFirestore.instance
         .collection('carbon_offsets')
         .where('userId', isEqualTo: user.uid)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (previousValue, doc) => previousValue + ((doc.data()['offsetAmountKg'] as num?)?.toDouble() ?? 0.0)))
-        .handleError((error) {
+        .listen((snapshot) {
+          if (FirebaseAuth.instance.currentUser == null) return;
+
+          final sum = snapshot.docs.fold(0.0, (prev, doc) => prev + ((doc.data()['offsetAmountKg'] as num?)?.toDouble() ?? 0.0));
+          if (mounted) {
+            setState(() {
+              _totalCo2Offset = sum;
+              _isCo2OffsetLoading = false;
+            });
+          }
+        }, onError: (error) {
           debugPrint("Erro ao ouvir CO2 compensado: $error");
-          return 0.0;
+          if (mounted) {
+            setState(() {
+              _isCo2OffsetLoading = false;
+            });
+          }
         });
+    } else {
+       _isCo2OffsetLoading = false;
     }
     _simulatedDestinationFocusNode.addListener(_onDestinationFocusChange);
   }
   
   @override
   void dispose() {
+    _gpsTabScrollController.dispose();
+    _simulatorTabScrollController.dispose();
+
     _originController.dispose();
     _destinationController.dispose();
     _tabController.dispose();
@@ -282,6 +310,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     _simulatedOriginFocusNode.dispose();
     _simulatedDestinationFocusNode.removeListener(_onDestinationFocusChange);
     _simulatedDestinationFocusNode.dispose();
+
+    _totalCo2OffsetStreamSubscription?.cancel();
+    
     super.dispose();
   }
   
@@ -300,7 +331,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final user = _currentUser;
     if (user == null || !mounted) return;
   
-    // CORREÇÃO ASYNC GAPS: Guardamos o context e o navigator ANTES do 'await'
     final dialogContext = context;
     final navigator = Navigator.of(dialogContext);
     final scaffoldMessenger = ScaffoldMessenger.of(dialogContext);
@@ -509,18 +539,28 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   void _navigateToTripHistory() { if (mounted) {Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const TripHistoryScreen()));} }
   
   Future<void> _logout() async {
-    // **CORREÇÃO APLICADA**
-    // Chamando os métodos de reset para limpar o estado dos providers antes de deslogar.
-    if (mounted) {
-      context.read<UserProvider>().clearUserDataOnLogout();
-      context.read<TripProvider>().resetTripState();
-      context.read<WalletProvider>().resetWalletState();
-    }
-    await FirebaseAuth.instance.signOut();
-  }
+    // SOLUÇÃO DEFINITIVA: Cancelamos a escuta do Firestore MANUALMENTE
+    // como a PRIMEIRA AÇÃO, antes de limpar os providers ou chamar o signOut.
+    // Isso garante que não haverá nenhuma tentativa de leitura após o logout ser iniciado.
+    _totalCo2OffsetStreamSubscription?.cancel();
 
-  // O restante do arquivo (funções de imagem, OCR, tracking, etc.) permanece o mesmo.
-  // ... (Cole o restante do seu código de _pickImageWithCamera até o final do build)
+    try {
+      if (mounted) {
+        context.read<UserProvider>().clearUserDataOnLogout();
+        context.read<TripProvider>().resetTripState();
+        context.read<WalletProvider>().resetWalletState();
+      }
+      
+      await FirebaseAuth.instance.signOut();
+
+    } catch (e) {
+      debugPrint("Um erro ocorreu durante o processo de logout: $e");
+      // Força o signOut novamente caso o erro tenha acontecido antes.
+      if (FirebaseAuth.instance.currentUser != null) {
+        await FirebaseAuth.instance.signOut();
+      }
+    }
+  }
 
   Future<XFile?> _pickImageWithCamera(String imagePurpose) async {
     if (!kIsWeb) {
@@ -875,7 +915,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final tripProvider = context.read<TripProvider>();
     
     if (tripProvider.isTracking) {
-      // **LÓGICA DE PARAR A VIAGEM**
       try {
         String finalDestinationCity = 'Destino desconhecido';
         
@@ -930,7 +969,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         }
       }
     } else {
-      // **LÓGICA DE INICIAR VIAGEM**
       if (tripProvider.selectedVehicle == null) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um veículo.'), backgroundColor: Colors.orangeAccent));
         return;
@@ -1113,7 +1151,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       });
     }
   }
-  
+
   Widget _buildIndicatorsSection(String userId) {
     const Color kmColor = Colors.blueAccent;
     const Color co2SavedColor = Colors.greenAccent;
@@ -1125,82 +1163,73 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final b2yCoins = walletProvider.balance;
     final walletIsLoading = walletProvider.isLoading;
 
-    return StreamBuilder<double>(
-      stream: _totalCo2OffsetStream,
-      initialData: 0.0,
-      builder: (context, offsetSnapshot) {
-        final totalCo2Offset = offsetSnapshot.data ?? 0.0;
-        final offsetIsLoading = offsetSnapshot.connectionState == ConnectionState.waiting;
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('trips').where('userId', isEqualTo: userId).snapshots(),
+      builder: (context, tripSnapshot) {
+        double totalKm = 0.0;
+        double totalCO2Saved = 0.0;
+        double totalCO2Emitido = 0.0;
+        
+        bool tripIndicatorsLoading = tripSnapshot.connectionState == ConnectionState.waiting;
 
-        return StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('trips').where('userId', isEqualTo: userId).snapshots(),
-          builder: (context, tripSnapshot) {
-            double totalKm = 0.0;
-            double totalCO2Saved = 0.0;
-            double totalCO2Emitido = 0.0;
-            
-            bool tripIndicatorsLoading = tripSnapshot.connectionState == ConnectionState.waiting;
-
-            if (tripSnapshot.hasData && tripSnapshot.data!.docs.isNotEmpty) {
-              for (var doc in tripSnapshot.data!.docs) {
-                final data = doc.data() as Map<String, dynamic>? ?? {};
-                totalKm += (data['distanceKm'] as num?)?.toDouble() ?? 0.0;
-                totalCO2Saved += (data['co2SavedKg'] as num?)?.toDouble() ?? 0.0;
-                totalCO2Emitido += (data['co2EmittedKg'] as num?)?.toDouble() ?? 0.0;
-              }
-            }
-            final double netCo2ToOffset = totalCO2Emitido - totalCo2Offset;
-            
-            final List<Map<String, dynamic>> indicatorsData = [
-              {'title': 'KM TOTAL', 'isLoading': tripIndicatorsLoading, 'value': '${totalKm.toStringAsFixed(1)} km', 'icon': Icons.drive_eta_outlined, 'color': kmColor, 'action': null},
-              {'title': 'CO₂ SEQUESTRADO', 'isLoading': tripIndicatorsLoading, 'value': '${totalCO2Saved.toStringAsFixed(2)} kg', 'icon': Icons.eco, 'color': co2SavedColor, 'action': null},
-              {
-                'title': 'CO₂ A COMPENSAR', 
-                'isLoading': tripIndicatorsLoading || offsetIsLoading, 
-                'value': '${netCo2ToOffset > 0 ? netCo2ToOffset.toStringAsFixed(2) : "0.00"} kg', 
-                'icon': Icons.smoke_free, 
-                'color': co2EmittedColor, 
-                'action': (netCo2ToOffset > 0.01 && !tripIndicatorsLoading && !offsetIsLoading) 
-                  ? TextButton(
-                      onPressed: () => _showCompensationDialog(co2ToOffset: netCo2ToOffset, tripId: 'general_offset'),
-                      style: TextButton.styleFrom(backgroundColor: Colors.white, foregroundColor: co2EmittedColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                      child: const Text('COMPENSAR'),
-                    ) 
-                  : null
-              },
-              {'title': 'B2Y COINS', 'isLoading': walletIsLoading, 'value': b2yCoins.toStringAsFixed(4), 'icon': Icons.toll_outlined, 'color': b2yCoinColor, 'action': null},
-              {'title': 'CO₂ COMPENSADO', 'isLoading': offsetIsLoading, 'value': '${totalCo2Offset.toStringAsFixed(2)} kg', 'icon': Icons.shield_outlined, 'color': co2OffsetColor, 'action': null},
-            ];
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12.0, crossAxisSpacing: 12.0, childAspectRatio: 1.7),
-                itemCount: indicatorsData.length,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemBuilder: (context, index) {
-                  final data = indicatorsData[index];
-                  return IndicatorCard(
-                    title: data['title'],
-                    isLoading: data['isLoading'],
-                    valueWidget: Text(
-                      data['value'].toString(),
-                      style: GoogleFonts.orbitron(color: data['color'] as Color, fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    icon: data['icon'],
-                    accentColor: data['color'],
-                    actionButton: data['action'],
-                  );
-                },
-              ).animate().fadeIn(delay: 200.ms),
-            );
+        if (tripSnapshot.hasData && tripSnapshot.data!.docs.isNotEmpty) {
+          for (var doc in tripSnapshot.data!.docs) {
+            final data = doc.data() as Map<String, dynamic>? ?? {};
+            totalKm += (data['distanceKm'] as num?)?.toDouble() ?? 0.0;
+            totalCO2Saved += (data['co2SavedKg'] as num?)?.toDouble() ?? 0.0;
+            totalCO2Emitido += (data['co2EmittedKg'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+        final double netCo2ToOffset = totalCO2Emitido - _totalCo2Offset;
+        
+        final List<Map<String, dynamic>> indicatorsData = [
+          {'title': 'KM TOTAL', 'isLoading': tripIndicatorsLoading, 'value': '${totalKm.toStringAsFixed(1)} km', 'icon': Icons.drive_eta_outlined, 'color': kmColor, 'action': null},
+          {'title': 'CO₂ SEQUESTRADO', 'isLoading': tripIndicatorsLoading, 'value': '${totalCO2Saved.toStringAsFixed(2)} kg', 'icon': Icons.eco, 'color': co2SavedColor, 'action': null},
+          {
+            'title': 'CO₂ A COMPENSAR', 
+            'isLoading': tripIndicatorsLoading || _isCo2OffsetLoading, 
+            'value': '${netCo2ToOffset > 0 ? netCo2ToOffset.toStringAsFixed(2) : "0.00"} kg', 
+            'icon': Icons.smoke_free, 
+            'color': co2EmittedColor, 
+            'action': (netCo2ToOffset > 0.01 && !tripIndicatorsLoading && !_isCo2OffsetLoading) 
+              ? TextButton(
+                  onPressed: () => _showCompensationDialog(co2ToOffset: netCo2ToOffset, tripId: 'general_offset'),
+                  style: TextButton.styleFrom(backgroundColor: Colors.white, foregroundColor: co2EmittedColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  child: const Text('COMPENSAR'),
+                ) 
+              : null
           },
+          {'title': 'B2Y COINS', 'isLoading': walletIsLoading, 'value': b2yCoins.toStringAsFixed(4), 'icon': Icons.toll_outlined, 'color': b2yCoinColor, 'action': null},
+          {'title': 'CO₂ COMPENSADO', 'isLoading': _isCo2OffsetLoading, 'value': '${_totalCo2Offset.toStringAsFixed(2)} kg', 'icon': Icons.shield_outlined, 'color': co2OffsetColor, 'action': null},
+        ];
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12.0, crossAxisSpacing: 12.0, childAspectRatio: 1.7),
+            itemCount: indicatorsData.length,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemBuilder: (context, index) {
+              final data = indicatorsData[index];
+              return IndicatorCard(
+                title: data['title'],
+                isLoading: data['isLoading'],
+                valueWidget: Text(
+                  data['value'].toString(),
+                  style: GoogleFonts.orbitron(color: data['color'] as Color, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                icon: data['icon'],
+                accentColor: data['color'],
+                actionButton: data['action'],
+              );
+            },
+          ).animate().fadeIn(delay: 200.ms),
         );
       },
     );
   }
-
+  
   Widget _buildProgressBarSection() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('trips').where('userId', isEqualTo: _currentUser?.uid).snapshots(),
@@ -1890,6 +1919,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final String userId = user.uid;
 
     return ListView(
+      controller: _gpsTabScrollController,
       padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 80.0),
       children: [
         const AdBannerPlaceholder(), 
@@ -1926,6 +1956,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   Widget _buildTripSimulatorTabContentWrapper(ThemeData theme, Color subtleTextColor, Color primaryColor) {
     return SingleChildScrollView(
+      controller: _simulatorTabScrollController,
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 80.0),
       child: _buildTripSimulatorTabContent(theme, subtleTextColor, primaryColor),
     );

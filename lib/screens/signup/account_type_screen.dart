@@ -1,10 +1,10 @@
-// lib/screens/signup/account_type_screen.dart (CORRIGIDO Parâmetros Botão)
+// lib/screens/signup/account_type_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-// Importa as próximas telas do fluxo de cadastro (Confirme nome do pacote)
-import 'package:carbon/screens/signup/personal_data_screen.dart';
+// <<< IMPORTA A NOVA TELA DE FLUXO DE CADASTRO >>>
+import 'package:carbon/screens/signup/signup_flow_screen.dart'; 
 import 'package:carbon/screens/signup/company_data_screen.dart';
 
 class AccountTypeScreen extends StatelessWidget {
@@ -35,10 +35,8 @@ class AccountTypeScreen extends StatelessWidget {
               ).animate().fadeIn(delay: 100.ms).slideY(begin: -0.2),
               const SizedBox(height: 50),
 
-              // --- CORREÇÃO: Botão Pessoa Física com onPressed e label ---
               ElevatedButton.icon(
                 icon: const Icon(Icons.person_outline_rounded, size: 32),
-                // 'label' está aqui
                 label: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 18.0),
                   child: Text('Uso Pessoal\n(Pessoa Física)', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 16, height: 1.3)),
@@ -46,20 +44,16 @@ class AccountTypeScreen extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: colorScheme.primary.withOpacity(0.15), foregroundColor: colorScheme.primary,
                   shape: RoundedRectangleBorder( borderRadius: BorderRadius.circular(15), side: BorderSide(color: colorScheme.primary, width: 1.5)), elevation: 0),
-                // 'onPressed' está aqui
                 onPressed: () {
-                  // Navega para PersonalDataScreen SEM const
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const PersonalDataScreen()));
+                  // <<< CORRIGIDO: Navega para a nova tela de fluxo unificado >>>
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupFlowScreen()));
                 },
               ).animate().fadeIn(delay: 300.ms).slideX(begin: -0.5),
-              // ----------------------------------------------------------
-
+              
               const SizedBox(height: 25),
 
-              // --- CORREÇÃO: Botão Pessoa Jurídica com onPressed e label ---
               ElevatedButton.icon(
                  icon: const Icon(Icons.business_center_outlined, size: 32),
-                 // 'label' está aqui
                  label: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 18.0),
                   child: Text('Uso Empresarial\n(Pessoa Jurídica)', textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: 16, height: 1.3)),
@@ -67,13 +61,10 @@ class AccountTypeScreen extends StatelessWidget {
                  style: ElevatedButton.styleFrom(
                     backgroundColor: colorScheme.secondary.withOpacity(0.15), foregroundColor: colorScheme.secondary,
                     shape: RoundedRectangleBorder( borderRadius: BorderRadius.circular(15), side: BorderSide(color: colorScheme.secondary, width: 1.5)), elevation: 0),
-                 // 'onPressed' está aqui
                  onPressed: () {
-                   // Navega para CompanyDataScreen SEM const
                    Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanyDataScreen()));
                  },
               ).animate().fadeIn(delay: 500.ms).slideX(begin: 0.5),
-              // ----------------------------------------------------------
             ],
           ),
         ),

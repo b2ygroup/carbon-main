@@ -1,4 +1,4 @@
-// lib/screens/signup/vehicle_registration_signup_screen.dart (COMPLETO E CORRIGIDO)
+// lib/screens/signup/vehicle_registration_signup_screen.dart
 import 'package:carbon/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -20,11 +20,12 @@ class VehicleRegistrationScreenForSignup extends StatefulWidget {
 
 class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistrationScreenForSignup> {
   RegistrationStep _currentStep = RegistrationStep.categorySelection;
-  String? _selectedCategory;
+  String? _selectedCategory; // Ex: 'Carro'
   bool _isLoading = false;
   final _formKey = GlobalKey<FormState>();
   String? _selectedMake;
   String? _selectedModelId;
+  Map<String, dynamic>? _selectedModelData;
   final _plateController = TextEditingController();
   final _nicknameController = TextEditingController();
   List<String> _makes = [];
@@ -42,6 +43,22 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
     _nicknameController.dispose();
     super.dispose();
   }
+  
+  // Função auxiliar para mapear a categoria da UI para o valor do DB
+  String _mapCategoryForQuery(String uiCategory) {
+    switch (uiCategory.toLowerCase()) {
+      case 'car':
+        return 'Carro';
+      case 'motorcycle':
+        return 'Moto';
+      case 'bus':
+        return 'Onibus';
+      case 'truck':
+        return 'Caminhao';
+      default:
+        return uiCategory;
+    }
+  }
 
   Future<void> _fetchMakes(String category) async {
     setState(() {
@@ -52,10 +69,14 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
       _selectedModelId = null;
     });
 
+    final dbCategory = _mapCategoryForQuery(category);
+    debugPrint("[LOG Signup] Buscando marcas para a categoria: '$dbCategory'");
+    
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('vehicle_models')
-          .where('category', isEqualTo: category)
+          // <<< CORRIGIDO: Usa o campo 'type' e o valor mapeado >>>
+          .where('type', isEqualTo: dbCategory)
           .get();
       
       final makes = snapshot.docs.map((doc) => doc.data()['make'] as String).toSet().toList();
@@ -80,19 +101,25 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
       _selectedModelId = null;
     });
 
+    final dbCategory = _mapCategoryForQuery(_selectedCategory!);
+    debugPrint("[LOG Signup] Buscando modelos para categoria: '$dbCategory' e marca: '$make'");
+
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('vehicle_models')
-          .where('category', isEqualTo: _selectedCategory)
+          // <<< CORRIGIDO: Usa o campo 'type' e o valor mapeado >>>
+          .where('type', isEqualTo: dbCategory)
           .where('make', isEqualTo: make)
-          .orderBy('model')
+          // <<< CORRIGIDO: Ordena por 'year' para corresponder ao índice >>>
+          .orderBy('year', descending: false)
           .get();
 
       final models = snapshot.docs.map((doc) {
         final data = doc.data();
         return {
           'id': doc.id,
-          'name': '${data['model']} ${data['version'] ?? ''}'
+          'name': '${data['model']} (${data['year']})',
+          'year': data['year'],
         };
       }).toList();
       
@@ -102,6 +129,8 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
         });
       }
     } catch (e) {
+       debugPrint("!!!!!!!!!! ERRO NA CONSULTA (SIGNUP) !!!!!!!!!!");
+       debugPrint(e.toString());
        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao buscar modelos: $e'), backgroundColor: errorColor));
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -110,9 +139,7 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
 
   void _submitForm() async {
     final isValid = _formKey.currentState?.validate() ?? false;
-    if (!isValid) return;
-
-    if (_selectedModelId == null) {
+    if (!isValid || _selectedModelId == null || _selectedModelData == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Selecione todos os campos obrigatórios.'), backgroundColor: Colors.orangeAccent)
       );
@@ -128,7 +155,8 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
         'userId': user.uid,
         'modelId': _selectedModelId,
         'licensePlate': _plateController.text.trim().toUpperCase(),
-        'nickname': _nicknameController.text.trim(),
+        'nickname': _nicknameController.text.trim().isNotEmpty ? _nicknameController.text.trim() : null,
+        'year': _selectedModelData!['year'],
         'createdAt': FieldValue.serverTimestamp()
       };
       
@@ -139,7 +167,6 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
             content: Text('Veículo registrado com sucesso! Bem-vindo(a)!'),
             backgroundColor: Colors.green));
 
-        // MUDANÇA: Navega para o Dashboard, pois o usuário já está logado.
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (ctx) => const DashboardScreen()),
           (route) => false,
@@ -157,6 +184,8 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
       }
     }
   }
+  
+  // O resto do código (build, _buildCategorySelection, etc.) permanece o mesmo
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +274,7 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
                   setState(() {
                     _selectedMake = value;
                     _selectedModelId = null;
+                    _selectedModelData = null;
                     _models = [];
                   });
                   _fetchModels(value);
@@ -267,7 +297,13 @@ class _VehicleRegistrationScreenForSignupState extends State<VehicleRegistration
                   child: Text(model['name'], overflow: TextOverflow.ellipsis),
                 );
               }).toList(),
-              onChanged: _isLoading ? null : (value) => setState(() => _selectedModelId = value),
+              onChanged: _isLoading ? null : (value) {
+                final selectedModel = _models.firstWhere((m) => m['id'] == value);
+                setState(() {
+                  _selectedModelId = value;
+                  _selectedModelData = selectedModel;
+                });
+              },
               decoration: _inputDecoration(prefixIcon: Icons.rv_hookup),
               dropdownColor: Colors.grey[850],
               style: const TextStyle(color: textColor, fontSize: 16),

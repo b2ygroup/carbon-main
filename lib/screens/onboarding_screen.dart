@@ -58,6 +58,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  // <<< NOVA FUNÇÃO PARA O BOTÃO PULAR >>>
+  void _skipToLastPage() {
+    // Anima a transição para a última página
+    _pageController.animateToPage(
+      _pages.length - 1,
+      duration: 600.ms,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const Color titleColor = Colors.white;
@@ -96,7 +106,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     opacity: !isLastPage ? 1.0 : 0.0,
                     duration: 200.ms,
                     child: TextButton(
-                      onPressed: !isLastPage ? _navigateToLogin : null,
+                      // <<< FUNÇÃO DO BOTÃO ALTERADA >>>
+                      onPressed: !isLastPage ? _skipToLastPage : null,
                       child: Text('Pular', style: TextStyle(color: skipButtonColor, fontSize: 16)),
                     ),
                   ),
@@ -121,6 +132,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: isLastPage
                       ? Column(
                           key: const ValueKey('finalActions'),
+                          mainAxisSize: MainAxisSize.min, // Adicionado para evitar overflow
                           children: [
                             ElevatedButton(
                               onPressed: _navigateToRegister,

@@ -1,8 +1,6 @@
 // lib/screens/auth_screen.dart (VERSÃO COMPLETA E CORRIGIDA)
 import 'dart:ui';
 import 'package:carbon/screens/onboarding_screen.dart';
-import 'package:carbon/services/wallet_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // Importante para a lógica web
 import 'package:flutter/material.dart';

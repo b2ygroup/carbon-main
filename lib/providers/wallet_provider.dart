@@ -1,4 +1,4 @@
-// lib/providers/wallet_provider.dart (COM MAIS LOGS PARA DIAGNÓSTICO)
+// lib/providers/wallet_provider.dart (COM MÉTODO DE RESET)
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -15,7 +15,6 @@ class WalletProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   void fetchWalletBalance(String userId) {
-    // [LOG] Adicionado para confirmar que a função foi chamada.
     print("[WalletProvider] - Iniciando fetchWalletBalance para o usuário: $userId");
 
     if (!_isLoading) {
@@ -27,7 +26,6 @@ class WalletProvider with ChangeNotifier {
     
     _balanceSubscription = _walletService.getWalletBalanceStream(userId).listen(
       (newBalance) {
-        // [LOG] Adicionado para confirmar que o stream está a enviar dados.
         print("[WalletProvider] - Novo saldo recebido do stream: $newBalance");
         _balance = newBalance;
         if (_isLoading) {
@@ -36,12 +34,23 @@ class WalletProvider with ChangeNotifier {
         notifyListeners();
       }, 
       onError: (error) {
-        // [LOG] Adicionado para capturar qualquer erro no stream.
         print("[WalletProvider] - ERRO recebido do stream: $error");
         _isLoading = false;
         notifyListeners();
       }
     );
+  }
+
+  /// **NOVO MÉTODO ADICIONADO**
+  /// Limpa o estado da carteira ao fazer logout.
+  /// Isso evita que dados de um usuário anterior apareçam para o próximo.
+  void resetWalletState() {
+    print("[WalletProvider] - Resetando o estado da carteira para logout.");
+    _balance = 0.0;
+    _isLoading = false; // Define como false para não mostrar um loading infinito na tela de login.
+    _balanceSubscription?.cancel(); // Cancela qualquer escuta ativa.
+    // Não é necessário chamar notifyListeners() aqui, pois os widgets que escutam
+    // provavelmente serão destruídos durante o processo de logout.
   }
 
   @override

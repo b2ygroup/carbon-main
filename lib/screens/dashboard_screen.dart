@@ -1,4 +1,4 @@
-// lib/screens/dashboard_screen.dart (VERSÃO REATORADA E CORRIGIDA)
+// lib/screens/dashboard_screen.dart (VERSÃO ATUALIZADA COM TODAS AS CORREÇÕES)
 
 import 'dart:async';
 import 'dart:convert';
@@ -43,13 +43,11 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:carbon/screens/global_dashboard_screen.dart';
 
-// MUDANÇA: O widget da carteira agora consome os dados dos Providers globais
 class DigitalWalletCard extends StatelessWidget {
   const DigitalWalletCard({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Ouve as mudanças no UserProvider e no WalletProvider
     final userProvider = context.watch<UserProvider>();
     final walletProvider = context.watch<WalletProvider>();
 
@@ -68,7 +66,8 @@ class DigitalWalletCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            // CORREÇÃO: `withOpacity` trocado por `withAlpha` para melhor performance.
+            color: Colors.black.withAlpha((255 * 0.4).round()),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -84,12 +83,12 @@ class DigitalWalletCard extends StatelessWidget {
               Text(
                 'B2Y WALLET',
                 style: GoogleFonts.orbitron(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withAlpha(178),
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
-              Icon(Icons.memory, color: Colors.cyanAccent.withOpacity(0.8), size: 30),
+              Icon(Icons.memory, color: Colors.cyanAccent.withAlpha(204), size: 30),
             ],
           ),
           Column(
@@ -98,7 +97,7 @@ class DigitalWalletCard extends StatelessWidget {
               Text(
                 'SALDO DISPONÍVEL',
                 style: GoogleFonts.rajdhani(
-                  color: Colors.white.withOpacity(0.5),
+                  color: Colors.white.withAlpha(128),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -108,7 +107,7 @@ class DigitalWalletCard extends StatelessWidget {
                 const SpinKitFadingCircle(color: Colors.white, size: 28)
               else
                 Text(
-                  'B2Y ${balance.toStringAsFixed(4)}', // Mostra o saldo que vem do Provider
+                  'B2Y ${balance.toStringAsFixed(4)}',
                   style: GoogleFonts.orbitron(
                     color: Colors.white,
                     fontSize: 26,
@@ -119,7 +118,7 @@ class DigitalWalletCard extends StatelessWidget {
               Text(
                 userName.toUpperCase(),
                 style: GoogleFonts.rajdhani(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withAlpha(204),
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                 ),
@@ -128,7 +127,7 @@ class DigitalWalletCard extends StatelessWidget {
           ),
           Column(
             children: [
-              Divider(color: Colors.white.withOpacity(0.2), height: 1),
+              Divider(color: Colors.white.withAlpha(51), height: 1),
               const SizedBox(height: 5),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -182,7 +181,7 @@ class DigitalWalletCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
+              style: TextStyle(color: Colors.white.withAlpha(229), fontSize: 12),
             ),
           ],
         ),
@@ -225,7 +224,7 @@ class DashboardScreen extends StatefulWidget {
   @override State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProviderStateMixin {
+class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
   
   final _originController = TextEditingController();
   final _destinationController = TextEditingController();
@@ -234,7 +233,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   final ImagePicker _picker = ImagePicker();
   
-  TabController? _tabController;
+  late final TabController _tabController;
   final _simulatedDistanceKmController = TextEditingController();
   final _simulatedOriginController = TextEditingController();
   final _simulatedDestinationController = TextEditingController();
@@ -247,7 +246,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   bool _isFetchingGpsTabOrigin = false;
   bool _isFetchingCurrentLocationCity = false;
   
-  // MUDANÇA: O Stream de CO2 compensado é mantido, pois é específico desta tela
   Stream<double>? _totalCo2OffsetStream;
   
   final FocusNode _simulatedOriginFocusNode = FocusNode();
@@ -258,14 +256,13 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     super.initState();
     _fetchAndSetGpsTabOriginCity();
     _tabController = TabController(length: 2, vsync: this);
-    if (_currentUser != null) {
-      // MUDANÇA: A inicialização do stream da carteira foi REMOVIDA.
-      // O stream de CO2 compensado permanece, pois é local desta tela.
+    final user = _currentUser; // Evita usar o campo de classe diretamente em closures.
+    if (user != null) {
       _totalCo2OffsetStream = FirebaseFirestore.instance
         .collection('carbon_offsets')
-        .where('userId', isEqualTo: _currentUser!.uid)
+        .where('userId', isEqualTo: user.uid)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) => sum + ((doc.data()['offsetAmountKg'] as num?)?.toDouble() ?? 0.0)))
+        .map((snapshot) => snapshot.docs.fold(0.0, (previousValue, doc) => previousValue + ((doc.data()['offsetAmountKg'] as num?)?.toDouble() ?? 0.0)))
         .handleError((error) {
           debugPrint("Erro ao ouvir CO2 compensado: $error");
           return 0.0;
@@ -278,7 +275,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   void dispose() {
     _originController.dispose();
     _destinationController.dispose();
-    _tabController?.dispose();
+    _tabController.dispose();
     _simulatedDistanceKmController.dispose();
     _simulatedOriginController.dispose();
     _simulatedDestinationController.dispose();
@@ -300,21 +297,24 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     required double co2ToOffset,
     required String tripId,
   }) async {
-    if (!mounted || _currentUser == null) return;
+    final user = _currentUser;
+    if (user == null || !mounted) return;
   
+    // CORREÇÃO ASYNC GAPS: Guardamos o context e o navigator ANTES do 'await'
+    final dialogContext = context;
+    final navigator = Navigator.of(dialogContext);
+    final scaffoldMessenger = ScaffoldMessenger.of(dialogContext);
+
     final walletService = WalletService();
-    final navigator = Navigator.of(context);
-    // MUDANÇA: Obtém o saldo atual diretamente do WalletProvider.
-    final currentBalance = context.read<WalletProvider>().balance;
+    final currentBalance = Provider.of<WalletProvider>(dialogContext, listen: false).balance;
     
     final double coinsNeeded = co2ToOffset;
     final bool hasEnoughBalance = currentBalance >= coinsNeeded;
-  
+
     await showDialog(
-      context: context,
+      context: dialogContext,
       barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        // O corpo do seu dialog permanece o mesmo
+      builder: (BuildContext dialogBuildContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF2c2c2e),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -338,13 +338,13 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                 label: const Text('Compensar com meu Saldo'),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 44)),
                 onPressed: () async {
-                  Navigator.of(dialogContext).pop(); 
-                  final success = await walletService.compensateWithCoins(userId: _currentUser!.uid, co2ToOffset: co2ToOffset, tripId: tripId);
-                  if (!mounted) return;
+                  Navigator.of(dialogBuildContext).pop(); 
+                  final success = await walletService.compensateWithCoins(userId: user.uid, co2ToOffset: co2ToOffset, tripId: tripId);
+                  
                   if (success) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compensação realizada com sucesso!'), backgroundColor: Colors.green));
+                    scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Compensação realizada com sucesso!'), backgroundColor: Colors.green));
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha ao tentar compensar. Verifique seu saldo e tente novamente.'), backgroundColor: Colors.redAccent));
+                    scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Falha ao tentar compensar. Verifique seu saldo e tente novamente.'), backgroundColor: Colors.redAccent));
                   }
                 },
               )
@@ -359,7 +359,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                     label: const Text('Adquirir B2Y Coins'),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent[400], foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 44)),
                     onPressed: () {
-                      Navigator.of(dialogContext).pop();
+                      Navigator.of(dialogBuildContext).pop();
                       navigator.push(MaterialPageRoute(builder: (ctx) => const TradeB2YScreen()));
                     },
                   ),
@@ -367,7 +367,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               ),
             const SizedBox(height: 8),
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
+              onPressed: () => Navigator.of(dialogBuildContext).pop(),
               child: const Text('Fechar', style: TextStyle(color: Colors.white70)),
             ),
           ],
@@ -425,10 +425,11 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     setState(() => _isFetchingGpsTabOrigin = true);
     
     try {
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!mounted) return;
+
       if (!serviceEnabled) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS desativado. Não foi possível detectar a origem.')));
+        if (mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('GPS desativado. Não foi possível detectar a origem.')));
         _originController.text = '';
         return;
       }
@@ -438,14 +439,13 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         permission = await Geolocator.requestPermission();
         if (!mounted) return;
         if (permission == LocationPermission.denied) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permissão de localização negada para detectar origem.')));
+          scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Permissão de localização negada para detectar origem.')));
           _originController.text = '';
           return;
         }
       }
       if (permission == LocationPermission.deniedForever) {
-        if (!mounted) return;
-        await _showPermissionDeniedPermanentlyDialog("localização para cidade origem");
+        if (mounted) await _showPermissionDeniedPermanentlyDialog("localização para cidade origem");
         _originController.text = '';
         return;
       }
@@ -457,7 +457,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         if (city != 'Local Desconhecido') {
           setState(() => _originController.text = city);
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível determinar a cidade de origem automaticamente.'), backgroundColor: Colors.orangeAccent));
+          scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Não foi possível determinar a cidade de origem automaticamente.'), backgroundColor: Colors.orangeAccent));
           _originController.text = '';
         }
       }
@@ -509,12 +509,18 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   void _navigateToTripHistory() { if (mounted) {Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const TripHistoryScreen()));} }
   
   Future<void> _logout() async {
+    // **CORREÇÃO APLICADA**
+    // Chamando os métodos de reset para limpar o estado dos providers antes de deslogar.
     if (mounted) {
-      Provider.of<UserProvider>(context, listen: false).clearUserDataOnLogout();
-      Provider.of<TripProvider>(context, listen: false).resetTripState();
+      context.read<UserProvider>().clearUserDataOnLogout();
+      context.read<TripProvider>().resetTripState();
+      context.read<WalletProvider>().resetWalletState();
     }
     await FirebaseAuth.instance.signOut();
   }
+
+  // O restante do arquivo (funções de imagem, OCR, tracking, etc.) permanece o mesmo.
+  // ... (Cole o restante do seu código de _pickImageWithCamera até o final do build)
 
   Future<XFile?> _pickImageWithCamera(String imagePurpose) async {
     if (!kIsWeb) {
@@ -539,8 +545,9 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   }
 
   Future<String?> _uploadImageToFirebaseStorage(XFile imageFile, String imageTypeForPath) async {
-    if (_currentUser == null) return null;
-    final String fileName = '${_currentUser.uid}/${DateTime.now().millisecondsSinceEpoch}_$imageTypeForPath.jpg';
+    final user = _currentUser;
+    if (user == null) return null;
+    final String fileName = '${user.uid}/${DateTime.now().millisecondsSinceEpoch}_$imageTypeForPath.jpg';
     final Reference storageReference = FirebaseStorage.instance.ref().child('trip_verification_images').child(fileName);
     try {
       Uint8List imageBytes = await imageFile.readAsBytes();
@@ -665,7 +672,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           )
         );
       }
-      if (!mounted || readyForPlatePhoto != true) { 
+      if (readyForPlatePhoto != true) { 
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura da placa cancelada.'), backgroundColor: Colors.orangeAccent));
         return null;
       }
@@ -683,8 +690,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         return null; 
       }
       final plateImageUrl = await _uploadImageToFirebaseStorage(plateImage, 'plate');
-      if (plateImageUrl == null) return null;
-      if (!mounted) return null;
+      if (!mounted || plateImageUrl == null) return null;
 
       bool? readyForOdoStart;
       if (mounted) {
@@ -698,7 +704,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           )
         );
       }
-      if (!mounted || readyForOdoStart != true) { 
+      if (readyForOdoStart != true) { 
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura do hodômetro inicial cancelada.'), backgroundColor: Colors.orangeAccent));
         return null; 
       }
@@ -751,7 +757,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           )
         );
       }
-      if (!mounted || readyForOdoEnd != true) { 
+      if (readyForOdoEnd != true) { 
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura do hodômetro final cancelada.'), backgroundColor: Colors.orangeAccent));
         return null;
       }
@@ -781,8 +787,10 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   }
 
   Future<SelectedVehicleInfo?> _fetchAndShowVehicleSelectionDialog() async {
-    if (_currentUser == null) return null;
-    final vehiclesSnapshot = await FirebaseFirestore.instance.collection('vehicles').where('userId', isEqualTo: _currentUser!.uid).get();
+    final user = _currentUser;
+    if (user == null || !mounted) return null;
+
+    final vehiclesSnapshot = await FirebaseFirestore.instance.collection('vehicles').where('userId', isEqualTo: user.uid).get();
     if (!mounted) return null;
     if (vehiclesSnapshot.docs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum veículo cadastrado.')));
@@ -922,7 +930,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         }
       }
     } else {
-      // **LÓGICA DE INICIAR VIAGEM** (permanece a mesma)
+      // **LÓGICA DE INICIAR VIAGEM**
       if (tripProvider.selectedVehicle == null) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um veículo.'), backgroundColor: Colors.orangeAccent));
         return;
@@ -1106,7 +1114,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     }
   }
   
-  // MUDANÇA: O método buildIndicatorsSection agora usa o WalletProvider
   Widget _buildIndicatorsSection(String userId) {
     const Color kmColor = Colors.blueAccent;
     const Color co2SavedColor = Colors.greenAccent;
@@ -1114,7 +1121,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     const Color co2EmittedColor = Color(0xFFff4d4d);
     final Color co2OffsetColor = Colors.tealAccent[400]!;
 
-    // Ouve o WalletProvider para obter os dados da carteira
     final walletProvider = context.watch<WalletProvider>();
     final b2yCoins = walletProvider.balance;
     final walletIsLoading = walletProvider.isLoading;
@@ -1195,10 +1201,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
   }
 
-  // MUDANÇA: Lógica do indicador de progresso para usar dados reais
   Widget _buildProgressBarSection() {
-    // Para que este indicador funcione, precisamos dos dados de CO2 salvo.
-    // Usamos um StreamBuilder para obter o valor mais recente.
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('trips').where('userId', isEqualTo: _currentUser?.uid).snapshots(),
       builder: (context, tripSnapshot) {
@@ -1209,9 +1212,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           }
         }
         
-        // Defina aqui a sua meta. Exemplo: 100 kg de CO2
         double metaCO2 = 100.0; 
-        // Calcula o progresso, garantindo que o valor fique entre 0.0 e 1.0
         double currentProgress = (totalCO2Saved / metaCO2).clamp(0.0, 1.0);
 
         return Padding(
@@ -1221,7 +1222,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               CircularPercentIndicator(
                  radius: 30.0,
                  lineWidth: 7.0,
-                 percent: currentProgress, // Usa o valor calculado
+                 percent: currentProgress,
                  center: Text( "${(currentProgress * 100).toInt()}%", style: GoogleFonts.orbitron(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white70), ),
                  progressColor: Colors.cyanAccent[400],
                  backgroundColor: Colors.grey.shade800,
@@ -1881,7 +1882,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
   }
 
-  // MUDANÇA: O widget `_buildGpsTrackingTabContentWrapper` agora usa o DigitalWalletCard sem passar parâmetros
   Widget _buildGpsTrackingTabContentWrapper(ThemeData theme, Color subtleTextColor, Color primaryColor) {
     final user = _currentUser;
     if (user == null) {
@@ -1898,7 +1898,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         const SizedBox(height: 16),
         const SizedBox(
           height: 220,
-          child: DigitalWalletCard(), // Agora não precisa de parâmetros
+          child: DigitalWalletCard(),
         ),
         const SizedBox(height: 12),
         _buildProgressBarSection(),
@@ -1982,7 +1982,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
   }
   
-  // O método build principal agora obtém o userProvider para passar para o AppBar
   @override
   Widget build(BuildContext context) {
     final user = _currentUser;
@@ -2005,7 +2004,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     return Scaffold(
       body: NestedScrollView(
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-          // ... (seu AppBar e TabBar permanecem os mesmos)
           return <Widget>[
             SliverAppBar(
               elevation: 1.0,

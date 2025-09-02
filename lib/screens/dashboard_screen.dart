@@ -1,4 +1,4 @@
-// lib/screens/dashboard_screen.dart (VERSÃO FINAL E CORRIGIDA)
+// lib/screens/dashboard_screen.dart (VERSÃO COMPLETA, ESTÁVEL E FINAL)
 
 import 'dart:async';
 import 'dart:convert';
@@ -66,7 +66,7 @@ class DigitalWalletCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withAlpha(102), // Correção aplicada
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -252,6 +252,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   final FocusNode _simulatedOriginFocusNode = FocusNode();
   final FocusNode _simulatedDestinationFocusNode = FocusNode();
 
+  // Declaração dos ScrollControllers
   final ScrollController _gpsTabScrollController = ScrollController();
   final ScrollController _simulatorTabScrollController = ScrollController();
 
@@ -454,12 +455,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     if (!mounted) return;
     setState(() => _isFetchingGpsTabOrigin = true);
     
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     try {
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
-        if (mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('GPS desativado. Não foi possível detectar a origem.')));
+        scaffoldMessenger.showSnackBar(const SnackBar(content: Text('GPS desativado. Não foi possível detectar a origem.')));
         _originController.text = '';
         return;
       }
@@ -475,7 +477,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         }
       }
       if (permission == LocationPermission.deniedForever) {
-        if (mounted) await _showPermissionDeniedPermanentlyDialog("localização para cidade origem");
+        await _showPermissionDeniedPermanentlyDialog("localização para cidade origem");
         _originController.text = '';
         return;
       }
@@ -494,7 +496,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao obter localização/cidade para origem: $e'), backgroundColor: Colors.red));
+        scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao obter localização/cidade para origem: $e'), backgroundColor: Colors.red));
       }
       _originController.text = '';
     } finally {
@@ -539,9 +541,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   void _navigateToTripHistory() { if (mounted) {Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const TripHistoryScreen()));} }
   
   Future<void> _logout() async {
-    // SOLUÇÃO DEFINITIVA: Cancelamos a escuta do Firestore MANUALMENTE
-    // como a PRIMEIRA AÇÃO, antes de limpar os providers ou chamar o signOut.
-    // Isso garante que não haverá nenhuma tentativa de leitura após o logout ser iniciado.
     _totalCo2OffsetStreamSubscription?.cancel();
 
     try {
@@ -555,7 +554,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     } catch (e) {
       debugPrint("Um erro ocorreu durante o processo de logout: $e");
-      // Força o signOut novamente caso o erro tenha acontecido antes.
       if (FirebaseAuth.instance.currentUser != null) {
         await FirebaseAuth.instance.signOut();
       }
@@ -563,14 +561,15 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   Future<XFile?> _pickImageWithCamera(String imagePurpose) async {
+    if (!mounted) return null;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     if (!kIsWeb) {
       PermissionStatus cameraStatus = await Permission.camera.request();
-      if (!mounted) return null;
       if (!cameraStatus.isGranted) {
         if (cameraStatus.isPermanentlyDenied) {
-          if (mounted) await _showPermissionDeniedPermanentlyDialog("câmera");
+          await _showPermissionDeniedPermanentlyDialog("câmera");
         } else {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Permissão para câmera não concedida para $imagePurpose.'), backgroundColor: Colors.orangeAccent));
+          scaffoldMessenger.showSnackBar(SnackBar(content: Text('Permissão para câmera não concedida para $imagePurpose.'), backgroundColor: Colors.orangeAccent));
         }
         return null;
       }
@@ -579,7 +578,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       final XFile? pickedFile = await _picker.pickImage(source: ImageSource.camera, imageQuality: 60, maxWidth: 1280, maxHeight: 1280);
       return pickedFile;
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao usar a câmera para $imagePurpose: $e'), backgroundColor: Colors.redAccent));
+      scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao usar a câmera para $imagePurpose: $e'), backgroundColor: Colors.redAccent));
       return null;
     }
   }
@@ -603,8 +602,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   Future<String?> _processImageWithOCR(XFile imageFile, String imageType) async {
     if (!mounted) return null;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     if (!AppConfig.isGoogleApiKeyConfigured) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ERRO: Chave de API não configurada.'), backgroundColor: Colors.redAccent));
+      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('ERRO: Chave de API não configurada.'), backgroundColor: Colors.redAccent));
       return null;
     }
 
@@ -618,9 +618,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       };
       
       final http.Response response = await http.post(url, headers: {'Content-Type': 'application/json'}, body: json.encode(requestBody));
-      if (!mounted) return null;
 
       if (response.statusCode == 200) {
+        if (!mounted) return null;
         final Map<String, dynamic> responseData = json.decode(response.body);
         if (responseData['responses'] != null && responseData['responses'].isNotEmpty && responseData['responses'][0]['fullTextAnnotation'] != null) {
           String fullText = responseData['responses'][0]['fullTextAnnotation']['text'];
@@ -684,53 +684,51 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             processedTextResult = foundOdometerInLines;
           }
         } else { 
-          if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OCR (Nuvem): Nenhum texto detectado.'), backgroundColor: Colors.orangeAccent));
+          scaffoldMessenger.showSnackBar(const SnackBar(content: Text('OCR (Nuvem): Nenhum texto detectado.'), backgroundColor: Colors.orangeAccent));
         }
       } else { 
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro no OCR (Nuvem): Cód ${response.statusCode}'), backgroundColor: Colors.redAccent));
+        scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro no OCR (Nuvem): Cód ${response.statusCode}'), backgroundColor: Colors.redAccent));
       }
     } catch (e) { 
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao processar OCR (Nuvem): $e'), backgroundColor: Colors.orangeAccent));
+      scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao processar OCR (Nuvem): $e'), backgroundColor: Colors.orangeAccent));
     }
     return processedTextResult;
   }
   
   Future<Map<String, dynamic>?> _captureAndUploadStartImages() async {
-    final tripProvider = context.read<TripProvider>();
     if (!mounted) return null;
+    final tripProvider = context.read<TripProvider>();
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     
     try {
       bool? readyForPlatePhoto;
-      if (mounted) {
-        readyForPlatePhoto = await showDialog<bool>(
-          context: context, 
-          barrierDismissible: false, 
-          builder: (ctx) => AlertDialog(
-            title: const Text('Foto da Placa'), 
-            content: const Text('Tire uma foto nítida da placa.'), 
-            actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('OK'))]
-          )
-        );
-      }
+      readyForPlatePhoto = await showDialog<bool>(
+        context: context, 
+        barrierDismissible: false, 
+        builder: (ctx) => AlertDialog(
+          title: const Text('Foto da Placa'), 
+          content: const Text('Tire uma foto nítida da placa.'), 
+          actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('OK'))]
+        )
+      );
       if (readyForPlatePhoto != true) { 
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura da placa cancelada.'), backgroundColor: Colors.orangeAccent));
+        scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Captura da placa cancelada.'), backgroundColor: Colors.orangeAccent));
         return null;
       }
 
       XFile? plateImage = await _pickImageWithCamera('Placa');
       if (plateImage == null) { 
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto da placa é obrigatória.'), backgroundColor: Colors.orangeAccent));
+        scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Foto da placa é obrigatória.'), backgroundColor: Colors.orangeAccent));
         return null; 
       }
 
       String? ocrPlateResult = await _processImageWithOCR(plateImage, 'plate');
-      if (!mounted) return null;
       if (ocrPlateResult == null || ocrPlateResult.isEmpty) { 
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível ler a placa. Tente uma foto melhor.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 3)));
+        if (mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Não foi possível ler a placa. Tente uma foto melhor.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 3)));
         return null; 
       }
       final plateImageUrl = await _uploadImageToFirebaseStorage(plateImage, 'plate');
-      if (!mounted || plateImageUrl == null) return null;
+      if (plateImageUrl == null) return null;
 
       bool? readyForOdoStart;
       if (mounted) {
@@ -745,20 +743,19 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         );
       }
       if (readyForOdoStart != true) { 
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura do hodômetro inicial cancelada.'), backgroundColor: Colors.orangeAccent));
+        if (mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Captura do hodômetro inicial cancelada.'), backgroundColor: Colors.orangeAccent));
         return null; 
       }
 
       XFile? odoStartImage = await _pickImageWithCamera('Hodômetro Inicial');
       if (odoStartImage == null) { 
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto do hodômetro inicial é obrigatória.'), backgroundColor: Colors.orangeAccent));
+        if (mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Foto do hodômetro inicial é obrigatória.'), backgroundColor: Colors.orangeAccent));
         return null; 
       }
       
       String? ocrOdometerResult = await _processImageWithOCR(odoStartImage, 'odometer_start');
-      if (!mounted) return null;
       if (ocrOdometerResult == null || ocrOdometerResult.isEmpty) { 
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hodômetro inicial não lido ou inválido. Tente uma foto melhor ou prossiga com cautela.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 4)));
+          if (mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Hodômetro inicial não lido ou inválido. Tente uma foto melhor ou prossiga com cautela.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 4)));
       }
       final odoStartImageUrl = await _uploadImageToFirebaseStorage(odoStartImage, 'odometer_start');
       if (odoStartImageUrl == null) return null;
@@ -773,32 +770,31 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       return {'status': 'success'};
 
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao capturar imagens iniciais: $e'), backgroundColor: Colors.redAccent));
+      if (mounted) scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao capturar imagens iniciais: $e'), backgroundColor: Colors.redAccent));
       return null;
     }
   }
 
   Future<Map<String, String?>?> _captureAndUploadEndOdometerImage() async {
-    final tripProvider = context.read<TripProvider>();
     if (!mounted) return null;
+    final tripProvider = context.read<TripProvider>();
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     
     tripProvider.setProcessingEndImage(true);
     
     try {
       bool? readyForOdoEnd;
-      if (mounted) {
-        readyForOdoEnd = await showDialog<bool>(
-          context: context, 
-          barrierDismissible: false, 
-          builder: (ctx) => AlertDialog(
-            title: const Text('Hodômetro Final'), 
-            content: const Text('Tire uma foto do hodômetro final.'), 
-            actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('OK'))]
-          )
-        );
-      }
+      readyForOdoEnd = await showDialog<bool>(
+        context: context, 
+        barrierDismissible: false, 
+        builder: (ctx) => AlertDialog(
+          title: const Text('Hodômetro Final'), 
+          content: const Text('Tire uma foto do hodômetro final.'), 
+          actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('OK'))]
+        )
+      );
       if (readyForOdoEnd != true) { 
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Captura do hodômetro final cancelada.'), backgroundColor: Colors.orangeAccent));
+        scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Captura do hodômetro final cancelada.'), backgroundColor: Colors.orangeAccent));
         return null;
       }
 
@@ -806,9 +802,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       if (odoEndImage == null) return null; 
 
       String? ocrOdometerResult = await _processImageWithOCR(odoEndImage, 'odometer_end');
-      if (!mounted) return null;
       if (ocrOdometerResult == null || ocrOdometerResult.isEmpty) { 
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hodômetro final não lido ou inválido. O registro seguirá, mas verifique os dados.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 4)));
+          if (mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Hodômetro final não lido ou inválido. O registro seguirá, mas verifique os dados.'), backgroundColor: Colors.orangeAccent, duration: Duration(seconds: 4)));
       }
       
       final odoEndImageUrl = await _uploadImageToFirebaseStorage(odoEndImage, 'odometer_end');
@@ -819,7 +814,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       };
 
     } catch (e) {
-     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao capturar imagem final: $e'), backgroundColor: Colors.redAccent));
+     if (mounted) scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao capturar imagem final: $e'), backgroundColor: Colors.redAccent));
      return null;
     } finally {
       if (mounted) tripProvider.setProcessingEndImage(false);
@@ -829,17 +824,18 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Future<SelectedVehicleInfo?> _fetchAndShowVehicleSelectionDialog() async {
     final user = _currentUser;
     if (user == null || !mounted) return null;
-
+  
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final vehiclesSnapshot = await FirebaseFirestore.instance.collection('vehicles').where('userId', isEqualTo: user.uid).get();
+    
     if (!mounted) return null;
     if (vehiclesSnapshot.docs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum veículo cadastrado.')));
+      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Nenhum veículo cadastrado.')));
       return null;
     }
     final modelIds = vehiclesSnapshot.docs.map((doc) => doc.data()['modelId'] as String?).where((id) => id != null).toList();
     if (modelIds.isEmpty) {
-        if (!mounted) return null;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veículos com formato antigo. Cadastre novamente.'), backgroundColor: Colors.orange));
+        if (mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Veículos com formato antigo. Cadastre novamente.'), backgroundColor: Colors.orange));
         return null;
     }
     final modelsSnapshot = await FirebaseFirestore.instance.collection('vehicle_models').where(FieldPath.documentId, whereIn: modelIds).get();
@@ -912,7 +908,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   Future<void> _toggleTracking() async {
+    if (!mounted) return;
     final tripProvider = context.read<TripProvider>();
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     
     if (tripProvider.isTracking) {
       try {
@@ -926,7 +924,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         } catch (e) {
           debugPrint("Erro ao obter localização final: $e");
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            scaffoldMessenger.showSnackBar(
               SnackBar(content: Text('Não foi possível obter a localização final: $e'), backgroundColor: Colors.orangeAccent)
             );
           }
@@ -940,44 +938,42 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           captureEndImage: _captureAndUploadEndOdometerImage()
         );
         
-        if (!mounted) return;
-
-        if (resultData != null) {
+        if (mounted && resultData != null) {
           final results = resultData['tripResult'] as TripCalculationResult;
           final tripId = resultData['tripId'] as String;
 
           if (results.isEmission) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem com emissão registrada!'), backgroundColor: Colors.orange));
-            _showCompensationDialog(co2ToOffset: results.co2EmittedKg, tripId: tripId);
+            scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Viagem com emissão registrada!'), backgroundColor: Colors.orange));
+            await _showCompensationDialog(co2ToOffset: results.co2EmittedKg, tripId: tripId);
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viagem salva! Créditos calculados.'), backgroundColor: Colors.green));
+            scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Viagem salva! Créditos calculados.'), backgroundColor: Colors.green));
             if (results.creditsEarned > 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              scaffoldMessenger.showSnackBar(
                 SnackBar(content: Text('+ ${results.creditsEarned.toStringAsFixed(4)} B2Y Coins na sua carteira!'), backgroundColor: Colors.amber[800])
               );
             }
           }
         }
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao parar viagem: $e'), backgroundColor: Colors.redAccent));
+        if (mounted) scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao parar viagem: $e'), backgroundColor: Colors.redAccent));
       } finally {
         if (mounted) {
           _originController.clear();
           _destinationController.clear();
-          _fetchAndSetGpsTabOriginCity();
+          await _fetchAndSetGpsTabOriginCity();
           tripProvider.resetTripState();
         }
       }
     } else {
       if (tripProvider.selectedVehicle == null) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um veículo.'), backgroundColor: Colors.orangeAccent));
+        scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Selecione um veículo.'), backgroundColor: Colors.orangeAccent));
         return;
       }
       try {
         bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
         if (!mounted) return;
         if (!serviceEnabled) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS desativado.')));
+          scaffoldMessenger.showSnackBar(const SnackBar(content: Text('GPS desativado.')));
           return;
         }
         LocationPermission permission = await Geolocator.checkPermission();
@@ -985,7 +981,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           permission = await Geolocator.requestPermission();
           if (!mounted) return;
           if (permission == LocationPermission.denied) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permissão negada.')));
+            scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Permissão negada.')));
             return;
           }
         }
@@ -998,8 +994,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         await tripProvider.startTracking(captureStartImages: _captureAndUploadStartImages());
         
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao iniciar viagem: $e'), backgroundColor: Colors.redAccent));
-        tripProvider.resetTripState();
+        if (mounted) {
+          scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao iniciar viagem: $e'), backgroundColor: Colors.redAccent));
+          tripProvider.resetTripState();
+        }
       }
     }
   }
@@ -1920,35 +1918,35 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     return ListView(
       controller: _gpsTabScrollController,
-      padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 80.0),
+      padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 80.0),
       children: [
-        const AdBannerPlaceholder(), 
-        const SizedBox(height: 12), 
+        _buildGpsTrackingTabContent(theme, subtleTextColor, primaryColor),
+        const SizedBox(height: 24),
         _buildIndicatorsSection(userId),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         const SizedBox(
           height: 220,
           child: DigitalWalletCard(),
         ),
         const SizedBox(height: 12),
         _buildProgressBarSection(),
-        Divider(height: 20, thickness: 0.5, color: Colors.grey[800]), 
-        _buildGpsTrackingTabContent(theme, subtleTextColor, primaryColor),
-        _buildLastThreeTripsSection(userId, primaryColor), 
-        const SizedBox(height: 20), 
+        Divider(height: 30, thickness: 0.5, color: Colors.grey[800]), 
         _buildVehicleSectionHeader(theme, primaryColor),
         const SizedBox(height: 10), 
         _buildVehicleList(userId, theme, primaryColor, subtleTextColor),
+        _buildLastThreeTripsSection(userId, primaryColor), 
         const SizedBox(height: 20), 
         Text('Desempenho Recente', style: GoogleFonts.orbitron(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white.withAlpha(230))),
         const SizedBox(height: 10), 
         TripChartPlaceholder(primaryColor: primaryColor).animate().fadeIn(delay: 600.ms).slideY(begin: 0.2),
+        const SizedBox(height: 20),
+        _buildNavigationButtons(),
+        const SizedBox(height: 20),
+        const AdBannerPlaceholder(), 
         const SizedBox(height: 20), 
         Text('Mapa de Eletropostos (Simulado)', style: GoogleFonts.orbitron(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white.withAlpha(230))),
         const SizedBox(height: 10), 
         const MinimapPlaceholder(showUserMarker: true),
-        const SizedBox(height: 20), 
-        _buildNavigationButtons(),
         const SizedBox(height: 20),
       ],
     );

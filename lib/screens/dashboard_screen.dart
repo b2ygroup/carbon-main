@@ -1,9 +1,10 @@
-// lib/screens/dashboard_screen.dart (VERSÃO COMPLETA, ESTÁVEL E FINAL)
+// lib/screens/dashboard_screen.dart (VERSÃO CORRIGIDA COM PACOTE ANIMATED_DIGIT)
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:animated_digit/animated_digit.dart'; // <<< NOVO IMPORT CORRIGIDO
 import 'package:carbon/config/app_config.dart';
 import 'package:carbon/models/vehicle_type_enum.dart';
 import 'package:carbon/providers/trip_provider.dart';
@@ -66,7 +67,7 @@ class DigitalWalletCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(102), // Correção aplicada
+            color: Colors.black.withAlpha(102),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -252,7 +253,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   final FocusNode _simulatedOriginFocusNode = FocusNode();
   final FocusNode _simulatedDestinationFocusNode = FocusNode();
 
-  // Declaração dos ScrollControllers
   final ScrollController _gpsTabScrollController = ScrollController();
   final ScrollController _simulatorTabScrollController = ScrollController();
 
@@ -372,6 +372,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   Navigator.of(dialogBuildContext).pop(); 
                   final success = await walletService.compensateWithCoins(userId: user.uid, co2ToOffset: co2ToOffset, tripId: tripId);
                   
+                  if (!mounted) return;
                   if (success) {
                     scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Compensação realizada com sucesso!'), backgroundColor: Colors.green));
                   } else {
@@ -461,6 +462,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
+        if (!mounted) return;
         scaffoldMessenger.showSnackBar(const SnackBar(content: Text('GPS desativado. Não foi possível detectar a origem.')));
         _originController.text = '';
         return;
@@ -477,6 +479,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         }
       }
       if (permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
         await _showPermissionDeniedPermanentlyDialog("localização para cidade origem");
         _originController.text = '';
         return;
@@ -567,6 +570,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       PermissionStatus cameraStatus = await Permission.camera.request();
       if (!cameraStatus.isGranted) {
         if (cameraStatus.isPermanentlyDenied) {
+          if (!mounted) return null;
           await _showPermissionDeniedPermanentlyDialog("câmera");
         } else {
           scaffoldMessenger.showSnackBar(SnackBar(content: Text('Permissão para câmera não concedida para $imagePurpose.'), backgroundColor: Colors.orangeAccent));
@@ -702,6 +706,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     
     try {
       bool? readyForPlatePhoto;
+      if (!mounted) return null;
       readyForPlatePhoto = await showDialog<bool>(
         context: context, 
         barrierDismissible: false, 
@@ -712,12 +717,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         )
       );
       if (readyForPlatePhoto != true) { 
+        if (!mounted) return null;
         scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Captura da placa cancelada.'), backgroundColor: Colors.orangeAccent));
         return null;
       }
 
       XFile? plateImage = await _pickImageWithCamera('Placa');
       if (plateImage == null) { 
+        if (!mounted) return null;
         scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Foto da placa é obrigatória.'), backgroundColor: Colors.orangeAccent));
         return null; 
       }
@@ -784,6 +791,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     
     try {
       bool? readyForOdoEnd;
+      if (!mounted) return null;
       readyForOdoEnd = await showDialog<bool>(
         context: context, 
         barrierDismissible: false, 
@@ -944,10 +952,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
           if (results.isEmission) {
             scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Viagem com emissão registrada!'), backgroundColor: Colors.orange));
+            if (!mounted) return;
             await _showCompensationDialog(co2ToOffset: results.co2EmittedKg, tripId: tripId);
           } else {
             scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Viagem salva! Créditos calculados.'), backgroundColor: Colors.green));
             if (results.creditsEarned > 0) {
+              if (!mounted) return;
               scaffoldMessenger.showSnackBar(
                 SnackBar(content: Text('+ ${results.creditsEarned.toStringAsFixed(4)} B2Y Coins na sua carteira!'), backgroundColor: Colors.amber[800])
               );
@@ -1021,6 +1031,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     try {
       final response = await http.get(Uri.parse(requestUrl));
       if (!mounted) return;
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['status'] == 'OK') {
@@ -1031,21 +1042,21 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               final distanceInMeters = legs[0]['distance']['value'];
               final double distanceInKm = distanceInMeters / 1000.0;
               setState(() => _simulatedDistanceKmController.text = distanceInKm.toStringAsFixed(1));
-              if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Distância aproximada: ${distanceInKm.toStringAsFixed(1)} KM.'), backgroundColor: Colors.green));
+              if(mounted) scaffoldMessenger.showSnackBar(SnackBar(content: Text('Distância aproximada: ${distanceInKm.toStringAsFixed(1)} KM.'), backgroundColor: Colors.green));
             } else {
-              if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rota não encontrada (sem "legs" na resposta).'), backgroundColor: Colors.orangeAccent));
+              if(mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Rota não encontrada (sem "legs" na resposta).'), backgroundColor: Colors.orangeAccent));
             }
           } else {
-            if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhuma rota encontrada entre as cidades.'), backgroundColor: Colors.orangeAccent));
+            if(mounted) scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Nenhuma rota encontrada entre as cidades.'), backgroundColor: Colors.orangeAccent));
           }
         } else if (data['error_message'] != null) {
-          if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro da API de Direções: ${data['error_message']}'), backgroundColor: Colors.orangeAccent));
+          if(mounted) scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro da API de Direções: ${data['error_message']}'), backgroundColor: Colors.orangeAccent));
         } else {
-          if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao buscar distância: ${data['status']}'), backgroundColor: Colors.orangeAccent));
+          if(mounted) scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao buscar distância: ${data['status']}'), backgroundColor: Colors.orangeAccent));
         }
       } else {
         if(mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha ao buscar distância do servidor: Cód ${response.statusCode}'), backgroundColor: 
+          scaffoldMessenger.showSnackBar(SnackBar(content: Text('Falha ao buscar distância do servidor: Cód ${response.statusCode}'), backgroundColor: 
         Colors.red));
         }
       }
@@ -1078,8 +1089,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!mounted) return;
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
       if (!serviceEnabled) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Serviço de GPS desativado.')));
+        scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Serviço de GPS desativado.')));
         return;
       }
 
@@ -1088,7 +1100,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         permission = await Geolocator.requestPermission();
         if (!mounted) return;
         if (permission == LocationPermission.denied) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permissão de localização negada.')));
+          scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Permissão de localização negada.')));
           return;
         }
       }
@@ -1104,9 +1116,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       if (mounted) {
         if (city != 'Local Desconhecido') {
           setState(() => _simulatedOriginController.text = city);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cidade origem definida: $city'), backgroundColor: Colors.green));
+          scaffoldMessenger.showSnackBar(SnackBar(content: Text('Cidade origem definida: $city'), backgroundColor: Colors.green));
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível determinar a cidade da sua localização atual.'), backgroundColor: Colors.orangeAccent));
+          scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Não foi possível determinar a cidade da sua localização atual.'), backgroundColor: Colors.orangeAccent));
         }
       }
     } catch (e) {
@@ -1181,12 +1193,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         final double netCo2ToOffset = totalCO2Emitido - _totalCo2Offset;
         
         final List<Map<String, dynamic>> indicatorsData = [
-          {'title': 'KM TOTAL', 'isLoading': tripIndicatorsLoading, 'value': '${totalKm.toStringAsFixed(1)} km', 'icon': Icons.drive_eta_outlined, 'color': kmColor, 'action': null},
-          {'title': 'CO₂ SEQUESTRADO', 'isLoading': tripIndicatorsLoading, 'value': '${totalCO2Saved.toStringAsFixed(2)} kg', 'icon': Icons.eco, 'color': co2SavedColor, 'action': null},
+          {'title': 'KM TOTAL', 'isLoading': tripIndicatorsLoading, 'numericValue': totalKm, 'fractionDigits': 1, 'suffix': ' km', 'icon': Icons.drive_eta_outlined, 'color': kmColor, 'action': null},
+          {'title': 'CO₂ SEQUESTRADO', 'isLoading': tripIndicatorsLoading, 'numericValue': totalCO2Saved, 'fractionDigits': 2, 'suffix': ' kg', 'icon': Icons.eco, 'color': co2SavedColor, 'action': null},
           {
             'title': 'CO₂ A COMPENSAR', 
             'isLoading': tripIndicatorsLoading || _isCo2OffsetLoading, 
-            'value': '${netCo2ToOffset > 0 ? netCo2ToOffset.toStringAsFixed(2) : "0.00"} kg', 
+            'numericValue': netCo2ToOffset > 0 ? netCo2ToOffset : 0.0,
+            'fractionDigits': 2,
+            'suffix': ' kg',
             'icon': Icons.smoke_free, 
             'color': co2EmittedColor, 
             'action': (netCo2ToOffset > 0.01 && !tripIndicatorsLoading && !_isCo2OffsetLoading) 
@@ -1197,8 +1211,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 ) 
               : null
           },
-          {'title': 'B2Y COINS', 'isLoading': walletIsLoading, 'value': b2yCoins.toStringAsFixed(4), 'icon': Icons.toll_outlined, 'color': b2yCoinColor, 'action': null},
-          {'title': 'CO₂ COMPENSADO', 'isLoading': _isCo2OffsetLoading, 'value': '${_totalCo2Offset.toStringAsFixed(2)} kg', 'icon': Icons.shield_outlined, 'color': co2OffsetColor, 'action': null},
+          {'title': 'B2Y COINS', 'isLoading': walletIsLoading, 'numericValue': b2yCoins, 'fractionDigits': 4, 'suffix': '', 'icon': Icons.toll_outlined, 'color': b2yCoinColor, 'action': null},
+          {'title': 'CO₂ COMPENSADO', 'isLoading': _isCo2OffsetLoading, 'numericValue': _totalCo2Offset, 'fractionDigits': 2, 'suffix': ' kg', 'icon': Icons.shield_outlined, 'color': co2OffsetColor, 'action': null},
         ];
 
         return Padding(
@@ -1213,13 +1227,20 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               return IndicatorCard(
                 title: data['title'],
                 isLoading: data['isLoading'],
-                valueWidget: Text(
-                  data['value'].toString(),
-                  style: GoogleFonts.orbitron(color: data['color'] as Color, fontSize: 18, fontWeight: FontWeight.bold),
-                ),
                 icon: data['icon'],
                 accentColor: data['color'],
                 actionButton: data['action'],
+                valueWidget: AnimatedDigitWidget( // <<< CORREÇÃO: Usando o widget AnimatedDigitWidget
+                  value: data['numericValue'],
+                  duration: const Duration(milliseconds: 800),
+                  fractionDigits: data['fractionDigits'],
+                  suffix: data['suffix'],
+                  textStyle: GoogleFonts.orbitron(
+                    color: data['color'] as Color,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               );
             },
           ).animate().fadeIn(delay: 200.ms),
